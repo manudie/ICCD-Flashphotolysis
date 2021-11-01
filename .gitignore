@@ -130,8 +130,8 @@ dmypy.json
 
 
 # Project files
-processed_files/
-iccd_heatmaps/
-spectra/
-.asc
-.png
+**processed_files/
+**iccd_heatmaps/
+**spectra/
+*.asc
+*.png
