@@ -127,3 +127,11 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+# Project files
+processed_files/
+iccd_heatmaps/
+spectra/
+.asc
+.png
