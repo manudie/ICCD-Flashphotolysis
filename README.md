@@ -16,5 +16,6 @@ Calling the function plot1.evaluate() then starts the evaluation. Note that only
 The script will create folders for the plotted images, aswell as for processed data and will sort the files into these folders after it finished evaluating them. 
 
 
-![MD05_Kamera2Test_550nm_3ms_spectrum](https://user-images.githubusercontent.com/42771712/139681283-c81d5039-95d3-4238-a660-e134d28a68f5.png)
 ![MD05_Kamera2Test_550nm_3ms_heatmap](https://user-images.githubusercontent.com/42771712/139681285-1a5b1f46-b010-4216-82d8-9e3995aa9dd0.png)
+
+![MD05_Kamera2Test_550nm_3ms_spectrum](https://user-images.githubusercontent.com/42771712/139681283-c81d5039-95d3-4238-a660-e134d28a68f5.png)
