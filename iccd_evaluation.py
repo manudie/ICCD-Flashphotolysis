@@ -12,6 +12,7 @@ The script will create folders for the plotted images, aswell as for processed d
 
 """
 
+### import packages ###
 import os
 import time
 import shutil
@@ -20,8 +21,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 
+### define class ###
 class iccd_evaluation():
+    
     def __init__(self, mode):
+        ### constructor that declares class variables (self.x) ###
         self.mode = mode
         self.file = ""
         self.single_row = False
@@ -34,7 +38,9 @@ class iccd_evaluation():
         self.wavelenght_cal_2 = 435.8335
         self.wavelenght_cal_3 = 546.0750
 
+    
     def read_file(self):
+        ### imports the ASCII (.asc) file exportet from the Andor SOLIS software and generates a pandas dataframe from it ###
         self.ascii_grid = pd.read_table(self.file, engine="python", skipfooter=29, index_col=1, usecols=[*range(1,1024)], header=None) 
         self.ascii_grid_transposed = self.ascii_grid.T
         self.image_filename = self.file[:len(self.file)-4]
@@ -47,6 +53,7 @@ class iccd_evaluation():
                 self.title = self.image_filename
                 
     def get_calibration(self):
+        ### maps the pixel column numbers over the linear calibration function y=mx+b with given slope m and intercept b from a 3-point linear regression (Hg-Ne lamp) ###
         #peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance)[0]
         #peak_cal_1 = peaks[0]
         #peak_cal_2 = peaks[1]
@@ -65,6 +72,7 @@ class iccd_evaluation():
         self.wavelengths = list(map(lambda x: m*x+b, index_list))
     
     def plot_heatmap(self):
+        ### plots the generated dataframe to a heatmap and saves it to the current folder ###
         plt.pcolor(self.ascii_grid_transposed)
         plt.colorbar(pad=0.01)
         plt.tick_params(
@@ -82,6 +90,7 @@ class iccd_evaluation():
         plt.clf()
 
     def plot_spectrum(self):
+        ### plots the generated dataframe to a spectrum with wavelengths on the x-axis from get_calibration() and saves it to the current folder ###
         if self.single_row == True:
             spectrum = self.ascii_grid_transposed.iloc[self.input_row]#[self.input_row:self.input_row+1]  # besser: to_numpy() 
         else: 
@@ -97,6 +106,7 @@ class iccd_evaluation():
         plt.clf()
 
     def evaluate_mode(self):
+        ### decides what to plot, given on the parameter ("heatmap", "spectrum", or "both") the class is called with ###
         if self.mode == "spectrum":
             self.evaluate_spectrum()
         elif self.mode == "heatmap":
@@ -106,14 +116,18 @@ class iccd_evaluation():
             self.evaluate_heatmap()
 
     def evaluate_heatmap(self):
+        ### combines functions for more functionality ###
         self.read_file()
         self.plot_heatmap()     
 
     def evaluate_spectrum(self):
+        ### combines functions for more functionality ###
         self.read_file()
         self.plot_spectrum() 
  
     def evaluate(self):
+        ### checks if there are folders for the generated images and processed data and creates them, if not. 
+        # Then scans and iterates through the current directory to evaluate and subsequently move the files to the folders one after another ###
         directory = os.getcwd()
         if not os.path.isdir("processed_files"):
             os.mkdir("processed_files")
@@ -141,6 +155,6 @@ class iccd_evaluation():
         
 
 if __name__ =='__main__':
-    plot1 = iccd_evaluation("both")
-    plot1.evaluate()
+    plot1 = iccd_evaluation("both")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both"
+    plot1.evaluate()                        # start evaluating process by calling the function evaluate()
     
