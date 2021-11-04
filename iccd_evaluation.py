@@ -14,7 +14,7 @@ The script will create folders for the plotted images, aswell as for processed d
 
 ### import packages ###
 import os
-import time
+import json
 import shutil
 import pandas as pd
 import numpy as np
@@ -27,18 +27,19 @@ class iccd_evaluation():
     def __init__(self, mode):
         ### constructor that declares class variables (self.x) ###
         self.mode = mode
-        self.test_run = True            # If self.test_run is True, Images will not be safed, but jut displayed and also files will not be moved. Made for easier developing.
+        self.test_run = False            # If self.test_run is True, Images will not be safed, but jut displayed and also files will not be moved. Made for easier developing.
         self.file = ""
         self.readout_mode = ""          # Supported: "Full Resolution Image" ("FRI") or "Single Track" ("ST")
         self.single_row = False
         self.input_row = 255
         self.mean_row_start = 500
         self.mean_row_end = 900
-        self.peak_height_min = 1500
+        self.peak_height_min = 2000
         self.peak_distance = 20
         self.wavelenght_cal_1 = 404.6565
         self.wavelenght_cal_2 = 435.8335
         self.wavelenght_cal_3 = 546.0750
+        self.directory = os.getcwd()
 
     
     def read_file(self):
@@ -49,13 +50,15 @@ class iccd_evaluation():
                 self.ascii_grid = pd.read_table(self.file, engine="python", skipfooter=29, index_col=0, header=None).dropna(axis=1, how="all")
             else:
                 f.seek(0)
+                self.readout_mode = ""
             if self.readout_mode != "ST":
                 if "Full Resolution Image" in f.read():
                     self.readout_mode = "FRI"
                     self.ascii_grid = pd.read_table(self.file, engine="python", skipfooter=29, index_col=0, header=None).dropna(axis=1, how="all") #usecols=[*range(1,1024)],
                 else: 
                     print('Unsupported readout mode! Choose "Full Resolution Image" or "Single Track"')
-        print(self.ascii_grid)
+            f.close()
+        #print(self.ascii_grid)
         self.ascii_grid_transposed = self.ascii_grid.T
         self.image_filename = self.file[:len(self.file)-4]
         try:
@@ -65,23 +68,39 @@ class iccd_evaluation():
                 self.title = self.image_filename.rsplit("\\",1)[1]
             except:
                 self.title = self.image_filename
-                
+
+    def calibrate(self):
+        self.get_calibration_file()
+        self.read_file()
+        self.calculate_spectrum()
+        peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance)[0]
+        print("Peaks found over " + str(self.peak_height_min) + " counts at columns: " + str(peaks))
+        wavelenght_cal_list = [self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3]
+        m,b = np.polyfit(peaks,wavelenght_cal_list,1)
+        calibration_dict = {
+            "wavelenghts (y):": "columns (x):",
+            self.wavelenght_cal_1: int(peaks[0]),
+            self.wavelenght_cal_2: int(peaks[1]),
+            self.wavelenght_cal_3: int(peaks[2]),
+            "slope and intercept:": "values:",
+            "m" : float(m),
+            "b" : float(b)
+        } 
+        with open("calibration_file.json", "w", encoding="utf-8") as f:
+            json.dump(calibration_dict, f, ensure_ascii=False, indent=4)
+        
+
     def get_calibration(self):
-        ### maps the pixel column numbers over the linear calibration function y=mx+b with given slope m and intercept b from a 3-point linear regression (Hg-Ne lamp) ###
-        #peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance)[0]
-        #peak_cal_1 = peaks[0]
-        #peak_cal_2 = peaks[1]
-        #peak_cal_3 = peaks[2]        
-        #b1 = (self.wavelenght_cal_2)/(((self.wavelenght_cal_1/peak_cal_1)-1)*(peak_cal_2+1))
-        #m1 = (self.wavelenght_cal_1/peak_cal_1)-b
-        #m = self.wavelenght_cal_2/(peak_cal_2-peak_cal_1)
-        #b = self.wavelenght_cal_1-(m*peak_cal_1)
-        #b = (self.wavelenght_cal_3-((self.wavelenght_cal_2*peak_cal_3)/peak_cal_2))/(1-(peak_cal_3/peak_cal_2))
-        #m = (self.wavelenght_cal_2-b)/peak_cal_2
-        #print(b)
-        #print(m)
-        m = 0.30423     #2-Punkt: 0.30453
-        b = 386.33293   #2-Punkt: 386.19437
+        try:
+            f = open("calibration_file.json")
+            calibration_dict_in = json.load(f)
+            m = calibration_dict_in.get("m")
+            b = calibration_dict_in.get("b")
+            f.close()
+        except:
+            print("No calibration file found! Spectrum will be generated with false values!")
+            m = 0.3033110988290711   
+            b = 386.25945492645576   
         index_list = np.arange(1,len(self.ascii_grid_transposed.columns)+1)
         self.wavelengths = list(map(lambda x: m*x+b, index_list))
     
@@ -106,8 +125,7 @@ class iccd_evaluation():
             plt.savefig(self.image_filename + "_heatmap", bbox_inches="tight")
         plt.clf()
 
-    def plot_spectrum(self):
-        ### plots the generated dataframe to a spectrum with wavelengths on the x-axis from get_calibration() and saves it to the current folder ###
+    def calculate_spectrum(self):
         if self.readout_mode == "ST":
             spectrum = self.ascii_grid_transposed.mean()
         elif self.readout_mode == "FRI":
@@ -116,6 +134,10 @@ class iccd_evaluation():
             else: 
                 spectrum = self.ascii_grid_transposed.iloc[self.mean_row_start:self.mean_row_end].mean()
         self.spectrum_list = spectrum.to_numpy()
+
+    def plot_spectrum(self):
+        ### plots the generated dataframe to a spectrum with wavelengths on the x-axis from get_calibration() and saves it to the current folder ###
+        self.calculate_spectrum()
         self.get_calibration()
         plt.plot(self.wavelengths, self.spectrum_list)
         plt.title(label=self.title, pad=-262, loc="left")
@@ -127,57 +149,63 @@ class iccd_evaluation():
             plt.savefig(self.image_filename + "_spectrum", bbox_inches="tight")
         plt.clf()
 
-    def evaluate_mode(self):
+    def evaluate(self):
         ### decides what to plot, given on the parameter ("heatmap", "spectrum", or "both") the class is called with ###
         if self.mode == "spectrum":
-            self.evaluate_spectrum()
+            self.plot_spectrum()
         elif self.mode == "heatmap":
-            self.evaluate_heatmap()
+            self.plot_heatmap()
         elif self.mode == "both":
-            self.evaluate_spectrum()
-            self.evaluate_heatmap()
+            self.plot_spectrum()
+            self.plot_heatmap()
 
-    def evaluate_heatmap(self):
-        ### combines functions for more functionality ###
-        self.read_file()
-        self.plot_heatmap()     
+    def iterate(self):
+        self.make_dirs()
+        for entry in os.scandir(self.directory):
+            if entry.path.endswith(".asc") and entry.is_file():
+                self.file = entry.path
+                self.read_file()
+                self.evaluate()
+                self.move_files()
+        
+    def get_calibration_file(self):
+        asc_file_count =len([f for f in os.listdir(self.directory) if f.endswith('.asc') and os.path.isfile(os.path.join(self.directory, f))])
+        if asc_file_count == 1:
+            file_list = [f for f in os.listdir(self.directory) if f.endswith(".asc") and os.path.isfile(os.path.join(self.directory, f))]
+            self.file = "".join(file_list)
+        elif asc_file_count > 1:
+            print("Only put one calibration spectrum file (.asc) from calibration lamp in this folder to calibrate!")
+        elif asc_file_count == 0:
+            print("Put exactly one calibration spectrum file (.asc) from calibration lamp in this folder to calibrate!")
 
-    def evaluate_spectrum(self):
-        ### combines functions for more functionality ###
-        self.read_file()
-        self.plot_spectrum() 
- 
-    def evaluate(self):
-        ### checks if there are folders for the generated images and processed data and creates them, if not. 
-        # Then scans and iterates through the current directory to evaluate and subsequently move the files to the folders one after another ###
-        directory = os.getcwd()
+    def make_dirs(self):
         if not os.path.isdir("processed_files"):
             os.mkdir("processed_files")
         if not os.path.isdir("iccd_heatmaps") and (self.mode == "heatmap" or self.mode == "both"):
             os.mkdir("iccd_heatmaps")
         if not os.path.isdir("spectra") and (self.mode == "spectrum" or self.mode == "both"):
             os.mkdir("spectra")
-        time.sleep(1)
-        for entry in os.scandir(directory):
-            if entry.path.endswith(".asc") and entry.is_file():
-                self.file = entry.path
-                self.evaluate_mode()
-                if self.test_run != True: 
-                    shutil.move(self.file, "processed_files")
-                    try:
-                        if self.mode == "spectrum":
-                            shutil.move(self.image_filename + "_spectrum.png", "spectra")
-                        elif self.mode == "heatmap":
-                            shutil.move(self.image_filename + "_heatmap.png", "iccd_heatmaps")
-                        elif self.mode == "both":
-                            shutil.move(self.image_filename + "_spectrum.png", "spectra")
-                            shutil.move(self.image_filename + "_heatmap.png", "iccd_heatmaps")
-                    except:
-                        #os.remove(self.image_filename + ".png")
-                        print("Failed to safe data!")
+
+    def move_files(self):
+        ### checks if there are folders for the generated images and processed data and creates them, if not. 
+        # Then scans and iterates through the current directory to evaluate and subsequently move the files to the folders one after another ###
+        if self.test_run != True: 
+            shutil.move(self.file, "processed_files")
+            try:
+                if self.mode == "spectrum":
+                    shutil.move(self.image_filename + "_spectrum.png", "spectra")
+                elif self.mode == "heatmap":
+                    shutil.move(self.image_filename + "_heatmap.png", "iccd_heatmaps")
+                elif self.mode == "both":
+                    shutil.move(self.image_filename + "_spectrum.png", "spectra")
+                    shutil.move(self.image_filename + "_heatmap.png", "iccd_heatmaps")
+            except:
+                #os.remove(self.image_filename + ".png")
+                print("Failed to safe data!")
 
 
 if __name__ =='__main__':
-    plot1 = iccd_evaluation("spectrum")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both"
-    plot1.evaluate()                        # start evaluating process by calling the function evaluate()
-    
+    plot1 = iccd_evaluation("both")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both"
+    plot1.iterate()                        # start evaluating process by calling the function evaluate()
+    #plot1.calibrate()
+   
