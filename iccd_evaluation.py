@@ -27,8 +27,8 @@ class iccd_evaluation():
     def __init__(self, mode):
         ### constructor that declares class variables (self.x) ###
         self.mode = mode
-        self.test_run = False            # If self.test_run is True, Images will not be safed, but jut displayed and also files will not be moved. Made for easier developing.
-        self.show_cal_marks = True
+        self.test_run = True            # If self.test_run is True, Images will not be safed, but jut displayed and also files will not be moved. Made for easier developing.
+        self.show_cal_marks = False
         self.file = ""
         self.readout_mode = ""          # Supported: "Full Resolution Image" ("FRI") or "Single Track" ("ST")
         self.single_row = False
@@ -41,6 +41,8 @@ class iccd_evaluation():
         self.wavelenght_cal_2 = 435.8335
         self.wavelenght_cal_3 = 546.0750
         self.directory = os.getcwd()
+        self.AD_filename_list = ["_I_","_I0_","_D_"]
+        self.AD_dict = {}
     
     def read_file(self):
         ### imports the ASCII (.asc) file exportet from the Andor SOLIS software and generates a pandas dataframe from it ###
@@ -59,7 +61,7 @@ class iccd_evaluation():
                 else: 
                     print('Unsupported readout mode! Choose "Full Resolution Image" or "Single Track"')
             f.close()
-        print(self.ascii_grid)
+        #print(self.ascii_grid)
         self.ascii_grid_transposed = self.ascii_grid.T
         #print(self.ascii_grid_transposed)
         self.image_filename = self.file[:len(self.file)-4]
@@ -136,12 +138,21 @@ class iccd_evaluation():
             else: 
                 spectrum = self.ascii_grid_transposed.iloc[self.mean_row_start:self.mean_row_end].mean()
         self.spectrum_list = spectrum.to_numpy()
+    
+    def calculate_diff_absorbance(self):
+        I = self.AD_dict.get("I")
+        I0 = self.AD_dict.get("I0")
+        D = self.AD_dict.get("D")
+        self.diff_absorbance_list = -np.log10((I-D)/(I0-D))
 
     def plot_spectrum(self):
         ### plots the generated dataframe to a spectrum with wavelengths on the x-axis from get_calibration() and saves it to the current folder ###
-        self.calculate_spectrum()
+        if self.mode == "DA":
+            spectrum = self.diff_absorbance_list
+        else:
+            spectrum = self.spectrum_list
         self.get_calibration()
-        plt.plot(self.wavelengths, self.spectrum_list)
+        plt.plot(self.wavelengths, spectrum)
         plt.title(label=self.title, pad=-262, loc="left")
         plt.xlabel("wavelength λ / nm")
         plt.ylabel("counts")
@@ -156,10 +167,12 @@ class iccd_evaluation():
     def evaluate(self):
         ### decides what to plot, given on the parameter ("heatmap", "spectrum", or "both") the class is called with ###
         if self.mode == "spectrum":
+            self.calculate_spectrum()
             self.plot_spectrum()
         elif self.mode == "heatmap":
             self.plot_heatmap()
         elif self.mode == "both":
+            self.calculate_spectrum()
             self.plot_spectrum()
             self.plot_heatmap()
 
@@ -169,8 +182,18 @@ class iccd_evaluation():
             if entry.path.endswith(".asc") and entry.is_file():
                 self.file = entry.path
                 self.read_file()
-                self.evaluate()
-                self.move_files()
+                if self.mode != "DA":
+                    self.evaluate()
+                    self.move_files()
+                elif self.mode == "DA":
+                    for el in self.AD_filename_list:
+                        if el in self.file:
+                            self.calculate_spectrum()
+                            self.AD_dict.update({el.replace("_",""):self.spectrum_list})
+        if self.mode == "DA":
+            self.calculate_diff_absorbance()
+            self.plot_spectrum()
+                    
         
     def get_calibration_file(self):
         asc_file_count =len([f for f in os.listdir(self.directory) if f.endswith('.asc') and os.path.isfile(os.path.join(self.directory, f))])
@@ -209,7 +232,7 @@ class iccd_evaluation():
 
 
 if __name__ =='__main__':
-    plot1 = iccd_evaluation("both")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both"
+    plot1 = iccd_evaluation("DA")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both"
     plot1.iterate()                        # start evaluating process by calling the function evaluate()
     #plot1.calibrate()
    
