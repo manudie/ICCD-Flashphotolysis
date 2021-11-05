@@ -28,19 +28,19 @@ class iccd_evaluation():
         ### constructor that declares class variables (self.x) ###
         self.mode = mode
         self.test_run = False            # If self.test_run is True, Images will not be safed, but jut displayed and also files will not be moved. Made for easier developing.
+        self.show_cal_marks = True
         self.file = ""
         self.readout_mode = ""          # Supported: "Full Resolution Image" ("FRI") or "Single Track" ("ST")
         self.single_row = False
         self.input_row = 255
-        self.mean_row_start = 500
-        self.mean_row_end = 900
+        self.mean_row_start = 250
+        self.mean_row_end = 550
         self.peak_height_min = 2000
         self.peak_distance = 20
         self.wavelenght_cal_1 = 404.6565
         self.wavelenght_cal_2 = 435.8335
         self.wavelenght_cal_3 = 546.0750
         self.directory = os.getcwd()
-
     
     def read_file(self):
         ### imports the ASCII (.asc) file exportet from the Andor SOLIS software and generates a pandas dataframe from it ###
@@ -48,6 +48,7 @@ class iccd_evaluation():
             if "Single Track" in f.read():
                 self.readout_mode = "ST"
                 self.ascii_grid = pd.read_table(self.file, engine="python", skipfooter=29, index_col=0, header=None).dropna(axis=1, how="all")
+                self.ascii_grid = self.ascii_grid.drop([1,2,3,4],axis=0)
             else:
                 f.seek(0)
                 self.readout_mode = ""
@@ -58,8 +59,9 @@ class iccd_evaluation():
                 else: 
                     print('Unsupported readout mode! Choose "Full Resolution Image" or "Single Track"')
             f.close()
-        #print(self.ascii_grid)
+        print(self.ascii_grid)
         self.ascii_grid_transposed = self.ascii_grid.T
+        #print(self.ascii_grid_transposed)
         self.image_filename = self.file[:len(self.file)-4]
         try:
             self.title = self.image_filename.rsplit("/",1)[1]
@@ -143,6 +145,8 @@ class iccd_evaluation():
         plt.title(label=self.title, pad=-262, loc="left")
         plt.xlabel("wavelength λ / nm")
         plt.ylabel("counts")
+        if self.show_cal_marks == True:
+            plt.vlines([self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3], ymin=self.spectrum_list.min(), ymax=self.spectrum_list.max(), color="grey", linewidth=0.5)
         if self.test_run == True: 
             plt.show()
         else:
