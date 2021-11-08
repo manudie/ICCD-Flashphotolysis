@@ -27,8 +27,8 @@ class iccd_evaluation():
     def __init__(self, mode):
         ### constructor that declares class variables (self.x) ###
         self.mode = mode
-        self.test_run = True            # If self.test_run is True, Images will not be safed, but jut displayed and also files will not be moved. Made for easier developing.
-        self.show_cal_marks = True
+        self.test_run = False            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
+        self.show_cal_marks = False
         self.file = ""
         self.readout_mode = ""          # Supported: "Full Resolution Image" ("FRI") or "Single Track" ("ST")
         self.single_row = False
@@ -59,9 +59,12 @@ class iccd_evaluation():
                         if el in self.file:
                             self.calculate_spectrum()
                             self.AD_dict.update({el.replace("_",""):self.spectrum_list})
+                    self.move_files()        
         if self.mode == "DA":
             self.calculate_diff_absorbance()
             self.plot_spectrum()
+            self.move_files() 
+            
     
     def evaluate(self):
         ### decides what to plot, given on the parameter ("heatmap", "spectrum", or "both") the class is called with ###
@@ -92,9 +95,7 @@ class iccd_evaluation():
                 else: 
                     print('Unsupported readout mode! Choose "Full Resolution Image" or "Single Track"')
             f.close()
-        #print(self.ascii_grid)
         self.ascii_grid_transposed = self.ascii_grid.T
-        #print(self.ascii_grid_transposed)
         self.image_filename = self.file[:len(self.file)-4]
         try:
             self.title = self.image_filename.rsplit("/",1)[1]
@@ -110,15 +111,18 @@ class iccd_evaluation():
             os.mkdir("processed_files")
         if not os.path.isdir("iccd_heatmaps") and (self.mode == "heatmap" or self.mode == "both"):
             os.mkdir("iccd_heatmaps")
-        if not os.path.isdir("spectra") and (self.mode == "spectrum" or self.mode == "both"):
+        if not os.path.isdir("spectra") and (self.mode == "spectrum" or self.mode == "both" or self.mode == "DA"):
             os.mkdir("spectra")
 
     def move_files(self):
         ### move the files to the folders one after another ###
         if self.test_run != True: 
-            shutil.move(self.file, "processed_files")
             try:
-                if self.mode == "spectrum":
+                shutil.move(self.file, "processed_files")
+            except:
+                pass
+            try:
+                if self.mode == "spectrum" or self.mode == "DA":
                     shutil.move(self.image_filename + "_spectrum.png", "spectra")
                 elif self.mode == "heatmap":
                     shutil.move(self.image_filename + "_heatmap.png", "iccd_heatmaps")
@@ -127,7 +131,8 @@ class iccd_evaluation():
                     shutil.move(self.image_filename + "_heatmap.png", "iccd_heatmaps")
             except:
                 #os.remove(self.image_filename + ".png")
-                print("Failed to safe data!")
+                #print("Failed to safe data!")
+                pass
     
     def calculate_spectrum(self):
         ### calculates the mean of the data to a spectrum, based on the readout mode the data was aquired. 
@@ -154,7 +159,7 @@ class iccd_evaluation():
         else:
             spectrum = self.spectrum_list
         self.get_calibration()           
-        plt.plot(self.wavelengths, spectrum)
+        plt.plot(self.wavelengths, spectrum, linewidth=1)
         plt.title(label=self.title, pad=-262, loc="left")
         plt.xlabel("wavelength λ / nm")
         plt.ylabel("counts")
@@ -251,7 +256,7 @@ class iccd_evaluation():
             json.dump(calibration_dict, f, ensure_ascii=False, indent=4)        
 
 if __name__ =='__main__':
-    plot1 = iccd_evaluation("both")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
+    plot1 = iccd_evaluation("DA")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
                                             # You can also set the mode "DA" for calculating a difference absorbance spectrum.                
-    plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
+    #plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
     plot1.iterate()                         # start evaluating process by calling the function evaluate()
