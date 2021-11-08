@@ -35,7 +35,7 @@ class iccd_evaluation():
         self.input_row = 255
         self.mean_row_start = 250
         self.mean_row_end = 550
-        self.peak_height_min = 10000
+        self.peak_height_min = 2500
         self.peak_distance = 20
         self.wavelenght_cal_1 = 404.6565
         self.wavelenght_cal_2 = 435.8335
@@ -253,5 +253,5 @@ class iccd_evaluation():
 if __name__ =='__main__':
     plot1 = iccd_evaluation("both")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
                                             # You can also set the mode "DA" for calculating a difference absorbance spectrum.                
-    #plot1.calibrate()                      # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
+    plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
     plot1.iterate()                         # start evaluating process by calling the function evaluate()
