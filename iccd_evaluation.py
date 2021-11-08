@@ -19,7 +19,7 @@ import shutil
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, find_peaks_cwt
 
 ### define class ###
 class iccd_evaluation():
@@ -28,14 +28,14 @@ class iccd_evaluation():
         ### constructor that declares class variables (self.x) ###
         self.mode = mode
         self.test_run = True            # If self.test_run is True, Images will not be safed, but jut displayed and also files will not be moved. Made for easier developing.
-        self.show_cal_marks = False
+        self.show_cal_marks = True
         self.file = ""
         self.readout_mode = ""          # Supported: "Full Resolution Image" ("FRI") or "Single Track" ("ST")
         self.single_row = False
         self.input_row = 255
         self.mean_row_start = 250
         self.mean_row_end = 550
-        self.peak_height_min = 2000
+        self.peak_height_min = 10000
         self.peak_distance = 20
         self.wavelenght_cal_1 = 404.6565
         self.wavelenght_cal_2 = 435.8335
@@ -43,6 +43,36 @@ class iccd_evaluation():
         self.directory = os.getcwd()
         self.AD_filename_list = ["_I_","_I0_","_D_"]
         self.AD_dict = {}
+    
+    def iterate(self):
+        self.make_dirs()
+        for entry in os.scandir(self.directory):
+            if entry.path.endswith(".asc") and entry.is_file():
+                self.file = entry.path
+                self.read_file()
+                if self.mode != "DA":
+                    self.evaluate()
+                    self.move_files()
+                elif self.mode == "DA":
+                    for el in self.AD_filename_list:
+                        if el in self.file:
+                            self.calculate_spectrum()
+                            self.AD_dict.update({el.replace("_",""):self.spectrum_list})
+        if self.mode == "DA":
+            self.calculate_diff_absorbance()
+            self.plot_spectrum()
+    
+    def evaluate(self):
+        ### decides what to plot, given on the parameter ("heatmap", "spectrum", or "both") the class is called with ###
+        if self.mode == "spectrum":
+            self.calculate_spectrum()
+            self.plot_spectrum()
+        elif self.mode == "heatmap":
+            self.plot_heatmap()
+        elif self.mode == "both":
+            self.calculate_spectrum()
+            self.plot_spectrum()
+            self.plot_heatmap()
     
     def read_file(self):
         ### imports the ASCII (.asc) file exportet from the Andor SOLIS software and generates a pandas dataframe from it ###
@@ -73,138 +103,6 @@ class iccd_evaluation():
             except:
                 self.title = self.image_filename
 
-    def calibrate(self):
-        self.get_calibration_file()
-        self.read_file()
-        self.calculate_spectrum()
-        peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance)[0]
-        print("Peaks found over " + str(self.peak_height_min) + " counts at columns: " + str(peaks))
-        wavelenght_cal_list = [self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3]
-        m,b = np.polyfit(peaks,wavelenght_cal_list,1)
-        calibration_dict = {
-            "wavelenghts (y):": "columns (x):",
-            self.wavelenght_cal_1: int(peaks[0]),
-            self.wavelenght_cal_2: int(peaks[1]),
-            self.wavelenght_cal_3: int(peaks[2]),
-            "slope and intercept:": "values:",
-            "m" : float(m),
-            "b" : float(b)
-        } 
-        with open("calibration_file.json", "w", encoding="utf-8") as f:
-            json.dump(calibration_dict, f, ensure_ascii=False, indent=4)
-        
-
-    def get_calibration(self):
-        try:
-            f = open("calibration_file.json")
-            calibration_dict_in = json.load(f)
-            m = calibration_dict_in.get("m")
-            b = calibration_dict_in.get("b")
-            f.close()
-        except:
-            print("No calibration file found! Spectrum will be generated with false values!")
-            m = 0.3033110988290711   
-            b = 386.25945492645576   
-        index_list = np.arange(1,len(self.ascii_grid_transposed.columns)+1)
-        self.wavelengths = list(map(lambda x: m*x+b, index_list))
-    
-    def plot_heatmap(self):
-        ### plots the generated dataframe to a heatmap and saves it to the current folder ###
-        plt.pcolor(self.ascii_grid_transposed)
-        plt.colorbar(pad=0.01)
-        plt.tick_params(
-            axis='both',          # changes apply to the x-axis
-            which='both',      # both major and minor ticks are affected
-            bottom=False,      # ticks along the bottom edge are off
-            top=False, 
-            left=False,        # ticks along the top edge are off
-            labelbottom=False, # labels along the bottom edge are off
-            labelleft=False)
-        plt.title(label=self.title, pad=-262, loc="left", color="white")
-        if self.mode == "both" and self.readout_mode == "FRI":
-            plt.axhspan(self.mean_row_start, self.mean_row_end, color="red", alpha=0.3, lw=0)
-        if self.test_run == True: 
-            plt.show()
-        else:
-            plt.savefig(self.image_filename + "_heatmap", bbox_inches="tight")
-        plt.clf()
-
-    def calculate_spectrum(self):
-        if self.readout_mode == "ST":
-            spectrum = self.ascii_grid_transposed.mean()
-        elif self.readout_mode == "FRI":
-            if self.single_row == True:
-                spectrum = self.ascii_grid_transposed.iloc[self.input_row]
-            else: 
-                spectrum = self.ascii_grid_transposed.iloc[self.mean_row_start:self.mean_row_end].mean()
-        self.spectrum_list = spectrum.to_numpy()
-    
-    def calculate_diff_absorbance(self):
-        I = self.AD_dict.get("I")
-        I0 = self.AD_dict.get("I0")
-        D = self.AD_dict.get("D")
-        self.diff_absorbance_list = -np.log10((I-D)/(I0-D))
-
-    def plot_spectrum(self):
-        ### plots the generated dataframe to a spectrum with wavelengths on the x-axis from get_calibration() and saves it to the current folder ###
-        if self.mode == "DA":
-            spectrum = self.diff_absorbance_list
-        else:
-            spectrum = self.spectrum_list
-        self.get_calibration()
-        plt.plot(self.wavelengths, spectrum)
-        plt.title(label=self.title, pad=-262, loc="left")
-        plt.xlabel("wavelength λ / nm")
-        plt.ylabel("counts")
-        if self.show_cal_marks == True:
-            plt.vlines([self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3], ymin=self.spectrum_list.min(), ymax=self.spectrum_list.max(), color="grey", linewidth=0.5)
-        if self.test_run == True: 
-            plt.show()
-        else:
-            plt.savefig(self.image_filename + "_spectrum", bbox_inches="tight")
-        plt.clf()
-
-    def evaluate(self):
-        ### decides what to plot, given on the parameter ("heatmap", "spectrum", or "both") the class is called with ###
-        if self.mode == "spectrum":
-            self.calculate_spectrum()
-            self.plot_spectrum()
-        elif self.mode == "heatmap":
-            self.plot_heatmap()
-        elif self.mode == "both":
-            self.calculate_spectrum()
-            self.plot_spectrum()
-            self.plot_heatmap()
-
-    def iterate(self):
-        self.make_dirs()
-        for entry in os.scandir(self.directory):
-            if entry.path.endswith(".asc") and entry.is_file():
-                self.file = entry.path
-                self.read_file()
-                if self.mode != "DA":
-                    self.evaluate()
-                    self.move_files()
-                elif self.mode == "DA":
-                    for el in self.AD_filename_list:
-                        if el in self.file:
-                            self.calculate_spectrum()
-                            self.AD_dict.update({el.replace("_",""):self.spectrum_list})
-        if self.mode == "DA":
-            self.calculate_diff_absorbance()
-            self.plot_spectrum()
-                    
-        
-    def get_calibration_file(self):
-        asc_file_count =len([f for f in os.listdir(self.directory) if f.endswith('.asc') and os.path.isfile(os.path.join(self.directory, f))])
-        if asc_file_count == 1:
-            file_list = [f for f in os.listdir(self.directory) if f.endswith(".asc") and os.path.isfile(os.path.join(self.directory, f))]
-            self.file = "".join(file_list)
-        elif asc_file_count > 1:
-            print("Only put one calibration spectrum file (.asc) from calibration lamp in this folder to calibrate!")
-        elif asc_file_count == 0:
-            print("Put exactly one calibration spectrum file (.asc) from calibration lamp in this folder to calibrate!")
-
     def make_dirs(self):
         if not os.path.isdir("processed_files"):
             os.mkdir("processed_files")
@@ -229,10 +127,120 @@ class iccd_evaluation():
             except:
                 #os.remove(self.image_filename + ".png")
                 print("Failed to safe data!")
+    
+    def calculate_spectrum(self):
+        if self.readout_mode == "ST":
+            spectrum = self.ascii_grid_transposed.mean()
+        elif self.readout_mode == "FRI":
+            if self.single_row == True:
+                spectrum = self.ascii_grid_transposed.iloc[self.input_row]
+            else: 
+                spectrum = self.ascii_grid_transposed.iloc[self.mean_row_start:self.mean_row_end].mean()
+        self.spectrum_list = spectrum.to_numpy()
+    
+    def calculate_diff_absorbance(self):
+        I = self.AD_dict.get("I")
+        I0 = self.AD_dict.get("I0")
+        D = self.AD_dict.get("D")
+        self.diff_absorbance_list = -np.log10((I-D)/(I0-D))
+    
+    def plot_spectrum(self):
+        ### plots the generated dataframe to a spectrum with wavelengths on the x-axis from get_calibration() and saves it to the current folder ###
+        if self.mode == "DA":
+            spectrum = self.diff_absorbance_list
+        else:
+            spectrum = self.spectrum_list
+        self.get_calibration()           
+        plt.plot(self.wavelengths, spectrum)
+        plt.title(label=self.title, pad=-262, loc="left")
+        plt.xlabel("wavelength λ / nm")
+        plt.ylabel("counts")
+        if self.show_cal_marks == True:
+            plt.vlines([self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3], ymin=self.spectrum_list.min(), ymax=self.spectrum_list.max(), color="grey", linewidth=0.5)
+        if self.test_run == True: 
+            plt.show()
+        else:
+            plt.savefig(self.image_filename + "_spectrum", bbox_inches="tight")
+        plt.clf()
+    
+    def plot_heatmap(self):
+        ### plots the generated dataframe to a heatmap and saves it to the current folder ###
+        plt.pcolor(self.ascii_grid_transposed)
+        plt.colorbar(pad=0.01)
+        plt.tick_params(
+            axis='both',          # changes apply to the x-axis
+            which='both',      # both major and minor ticks are affected
+            bottom=False,      # ticks along the bottom edge are off
+            top=False, 
+            left=False,        # ticks along the top edge are off
+            labelbottom=False, # labels along the bottom edge are off
+            labelleft=False)
+        plt.title(label=self.title, pad=-262, loc="left", color="white")
+        if self.mode == "both" and self.readout_mode == "FRI":
+            plt.axhspan(self.mean_row_start, self.mean_row_end, color="red", alpha=0.3, lw=0)
+        if self.test_run == True: 
+            plt.show()
+        else:
+            plt.savefig(self.image_filename + "_heatmap", bbox_inches="tight")
+        plt.clf()
+                           
+    def get_calibration_file(self):
+        asc_file_count =len([f for f in os.listdir(self.directory) if f.endswith('.asc') and os.path.isfile(os.path.join(self.directory, f))])
+        if asc_file_count == 1:
+            file_list = [f for f in os.listdir(self.directory) if f.endswith(".asc") and os.path.isfile(os.path.join(self.directory, f))]
+            self.file = "".join(file_list)
+        elif asc_file_count > 1:
+            print("Only put one calibration spectrum file (.asc) from calibration lamp in this folder to calibrate!")
+        elif asc_file_count == 0:
+            print("Put exactly one calibration spectrum file (.asc) from calibration lamp in this folder to calibrate!")
 
+    def get_calibration(self):
+        try:
+            f = open("calibration_file.json")
+            calibration_dict_in = json.load(f)
+            m = calibration_dict_in.get("m")
+            b = calibration_dict_in.get("b")
+            f.close()
+        except:
+            print("No calibration file found! Spectrum will be generated with false values!")
+            m = 0.3033110988290711   
+            b = 386.25945492645576   
+        index_list = np.arange(1,len(self.ascii_grid_transposed.columns)+1)
+        self.wavelengths = list(map(lambda x: m*x+b, index_list))
+        #print(self.wavelengths)
+    
+    def calibrate(self):
+        self.get_calibration_file()
+        self.read_file()
+        self.calculate_spectrum()
+        peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance)[0]
+        print(peaks)
+        if peaks.size > 3:
+            #print(peaks.size)
+            #print(self.spectrum_list.shape)
+            #spectrum_list_list = list(self.spectrum_list)
+            #print(spectrum_list_list)
+            #bla = np.asarray(spectrum_list_list)
+            #peaks = find_peaks_cwt(bla, widths=1018)
+            peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance, width=40)[0]
+        #peaks = np.array([6,162,741])
+        print(peaks)
+        print("Peaks found over " + str(self.peak_height_min) + " counts at columns: " + str(peaks))
+        wavelenght_cal_list = [self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3]
+        m,b = np.polyfit(peaks,wavelenght_cal_list,1)
+        calibration_dict = {
+            "wavelenghts (y):": "columns (x):",
+            self.wavelenght_cal_1: int(peaks[0]),
+            self.wavelenght_cal_2: int(peaks[1]),
+            self.wavelenght_cal_3: int(peaks[2]),
+            "slope and intercept:": "values:",
+            "m" : float(m),
+            "b" : float(b)
+        } 
+        with open("calibration_file.json", "w", encoding="utf-8") as f:
+            json.dump(calibration_dict, f, ensure_ascii=False, indent=4)        
 
 if __name__ =='__main__':
-    plot1 = iccd_evaluation("DA")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both"
-    plot1.iterate()                        # start evaluating process by calling the function evaluate()
+    plot1 = iccd_evaluation("both")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both"                    
     #plot1.calibrate()
-   
+    plot1.iterate()  # start evaluating process by calling the function evaluate()
