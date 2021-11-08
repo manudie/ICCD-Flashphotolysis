@@ -45,6 +45,7 @@ class iccd_evaluation():
         self.AD_dict = {}
     
     def iterate(self):
+        ### main function that scans and iterates through the current directory to evaluates each .asc file after another ###
         self.make_dirs()
         for entry in os.scandir(self.directory):
             if entry.path.endswith(".asc") and entry.is_file():
@@ -104,6 +105,7 @@ class iccd_evaluation():
                 self.title = self.image_filename
 
     def make_dirs(self):
+        ### checks if there are folders for the generated images and processed data and creates them, if not ###
         if not os.path.isdir("processed_files"):
             os.mkdir("processed_files")
         if not os.path.isdir("iccd_heatmaps") and (self.mode == "heatmap" or self.mode == "both"):
@@ -112,8 +114,7 @@ class iccd_evaluation():
             os.mkdir("spectra")
 
     def move_files(self):
-        ### checks if there are folders for the generated images and processed data and creates them, if not. 
-        # Then scans and iterates through the current directory to evaluate and subsequently move the files to the folders one after another ###
+        ### move the files to the folders one after another ###
         if self.test_run != True: 
             shutil.move(self.file, "processed_files")
             try:
@@ -129,6 +130,8 @@ class iccd_evaluation():
                 print("Failed to safe data!")
     
     def calculate_spectrum(self):
+        ### calculates the mean of the data to a spectrum, based on the readout mode the data was aquired. 
+        # Supported readout modes: "Full Resolution Image" ("FRI") or "Single Track" ("ST") ###
         if self.readout_mode == "ST":
             spectrum = self.ascii_grid_transposed.mean()
         elif self.readout_mode == "FRI":
@@ -185,6 +188,7 @@ class iccd_evaluation():
         plt.clf()
                            
     def get_calibration_file(self):
+        ### function that reads in only one calibration .asc file for calibrate() mode, instead of iterating through the directory in iterate() mode. ###
         asc_file_count =len([f for f in os.listdir(self.directory) if f.endswith('.asc') and os.path.isfile(os.path.join(self.directory, f))])
         if asc_file_count == 1:
             file_list = [f for f in os.listdir(self.directory) if f.endswith(".asc") and os.path.isfile(os.path.join(self.directory, f))]
@@ -195,6 +199,9 @@ class iccd_evaluation():
             print("Put exactly one calibration spectrum file (.asc) from calibration lamp in this folder to calibrate!")
 
     def get_calibration(self):
+        ### Reads the calibration data from the .json calibration file or uses default values for the calibration, if there is no file. 
+        # The function than maps the column numbers over the calibration funtion to calculate wavelenghts. 
+        # Note, that you must use a valid and up to date calibration file to get correct wavelenght values! ###
         try:
             f = open("calibration_file.json")
             calibration_dict_in = json.load(f)
@@ -210,6 +217,9 @@ class iccd_evaluation():
         #print(self.wavelengths)
     
     def calibrate(self):
+        ### In calibrate() mode this function will search for the column numbers of three peaks in the spectrum of the calibration lamp. 
+        # The peaks will be determined by their height, set by self.peak_height_min. 
+        # It then uses a three-point linear fit to calculate values for the slope m and intercept b, which are stored together with the wavelenghts and depending column values in a .json file for later use. ###
         self.get_calibration_file()
         self.read_file()
         self.calculate_spectrum()
@@ -241,6 +251,7 @@ class iccd_evaluation():
             json.dump(calibration_dict, f, ensure_ascii=False, indent=4)        
 
 if __name__ =='__main__':
-    plot1 = iccd_evaluation("both")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both"                    
-    #plot1.calibrate()
-    plot1.iterate()  # start evaluating process by calling the function evaluate()
+    plot1 = iccd_evaluation("both")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
+                                            # You can also set the mode "DA" for calculating a difference absorbance spectrum.                
+    #plot1.calibrate()                      # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
+    plot1.iterate()                         # start evaluating process by calling the function evaluate()
