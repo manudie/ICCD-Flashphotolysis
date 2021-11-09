@@ -19,7 +19,8 @@ import shutil
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import find_peaks, find_peaks_cwt
+from scipy.signal import find_peaks
+from scipy import optimize
 
 ### define class ###
 class iccd_evaluation():
@@ -27,8 +28,9 @@ class iccd_evaluation():
     def __init__(self, mode):
         ### constructor that declares class variables (self.x) ###
         self.mode = mode
-        self.test_run = False            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
+        self.test_run = True            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
         self.show_cal_marks = False
+        self.drop_first_measurement = True             # In kinetic series w/ single track, often the first line of data is false due to build up charge in the ccd. Setting self.drop_first_measurent to True drops this line of data. Note to acquire n+1 mesaurements! 
         self.file = ""
         self.readout_mode = ""          # Supported: "Full Resolution Image" ("FRI") or "Single Track" ("ST")
         self.single_row = False
@@ -51,21 +53,20 @@ class iccd_evaluation():
             if entry.path.endswith(".asc") and entry.is_file():
                 self.file = entry.path
                 self.read_file()
-                if self.mode != "DA":
+                if self.mode == "spectrum" or self.mode == "heatmap" or self.mode == "both":
                     self.evaluate()
                     self.move_files()
-                elif self.mode == "DA":
+                elif self.mode == "DA" or self.mode == "A":
                     for el in self.AD_filename_list:
                         if el in self.file:
                             self.calculate_spectrum()
                             self.AD_dict.update({el.replace("_",""):self.spectrum_list})
                     self.move_files()        
-        if self.mode == "DA":
+        if self.mode == "DA" or self.mode == "A":
             self.calculate_diff_absorbance()
             self.plot_spectrum()
             self.move_files() 
             
-    
     def evaluate(self):
         ### decides what to plot, given on the parameter ("heatmap", "spectrum", or "both") the class is called with ###
         if self.mode == "spectrum":
@@ -85,6 +86,8 @@ class iccd_evaluation():
                 self.readout_mode = "ST"
                 self.ascii_grid = pd.read_table(self.file, engine="python", skipfooter=29, index_col=0, header=None).dropna(axis=1, how="all")
                 self.ascii_grid = self.ascii_grid.drop([1,2,3,4],axis=0)
+                if self.drop_first_measurement == True:
+                    self.ascii_grid = self.ascii_grid.drop([1],axis=1)
             else:
                 f.seek(0)
                 self.readout_mode = ""
@@ -95,6 +98,7 @@ class iccd_evaluation():
                 else: 
                     print('Unsupported readout mode! Choose "Full Resolution Image" or "Single Track"')
             f.close()
+        #print(self.ascii_grid)
         self.ascii_grid_transposed = self.ascii_grid.T
         self.image_filename = self.file[:len(self.file)-4]
         try:
@@ -111,7 +115,7 @@ class iccd_evaluation():
             os.mkdir("processed_files")
         if not os.path.isdir("iccd_heatmaps") and (self.mode == "heatmap" or self.mode == "both"):
             os.mkdir("iccd_heatmaps")
-        if not os.path.isdir("spectra") and (self.mode == "spectrum" or self.mode == "both" or self.mode == "DA"):
+        if not os.path.isdir("spectra") and (self.mode == "spectrum" or self.mode == "both" or self.mode == "DA" or self.mode == "A"):
             os.mkdir("spectra")
 
     def move_files(self):
@@ -122,7 +126,7 @@ class iccd_evaluation():
             except:
                 pass
             try:
-                if self.mode == "spectrum" or self.mode == "DA":
+                if self.mode == "spectrum" or self.mode == "DA" or self.mode == "A":
                     shutil.move(self.image_filename + "_spectrum.png", "spectra")
                 elif self.mode == "heatmap":
                     shutil.move(self.image_filename + "_heatmap.png", "iccd_heatmaps")
@@ -154,7 +158,7 @@ class iccd_evaluation():
     
     def plot_spectrum(self):
         ### plots the generated dataframe to a spectrum with wavelengths on the x-axis from get_calibration() and saves it to the current folder ###
-        if self.mode == "DA":
+        if self.mode == "DA" or self.mode == "A":
             spectrum = self.diff_absorbance_list
         else:
             spectrum = self.spectrum_list
@@ -162,7 +166,12 @@ class iccd_evaluation():
         plt.plot(self.wavelengths, spectrum, linewidth=1)
         plt.title(label=self.title, pad=-262, loc="left")
         plt.xlabel("wavelength λ / nm")
-        plt.ylabel("counts")
+        if self.mode == "DA":
+            plt.ylabel("difference absorbance ΔA")
+        elif self.mode == "A":
+            plt.ylabel("absorbance A")
+        else:
+            plt.ylabel("counts")
         if self.show_cal_marks == True:
             plt.vlines([self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3], ymin=self.spectrum_list.min(), ymax=self.spectrum_list.max(), color="grey", linewidth=0.5)
         if self.test_run == True: 
@@ -221,6 +230,14 @@ class iccd_evaluation():
         self.wavelengths = list(map(lambda x: m*x+b, index_list))
         #print(self.wavelengths)
     
+    def _1Lorentzian(self,x, amp, cen, wid):
+        return amp*wid**2/((x-cen)**2+wid**2)
+
+    def _3Lorentzian(self,x, amp1, cen1, wid1, amp2,cen2,wid2, amp3,cen3,wid3):
+        return (amp1*wid1**2/((x-cen1)**2+wid1**2)) +\
+                (amp2*wid2**2/((x-cen2)**2+wid2**2)) +\
+                    (amp3*wid3**2/((x-cen3)**2+wid3**2))
+    
     def calibrate(self):
         ### In calibrate() mode this function will search for the column numbers of three peaks in the spectrum of the calibration lamp. 
         # The peaks will be determined by their height, set by self.peak_height_min. 
@@ -231,13 +248,34 @@ class iccd_evaluation():
         peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance)[0]
         print(peaks)
         if peaks.size > 3:
-            #print(peaks.size)
-            #print(self.spectrum_list.shape)
-            #spectrum_list_list = list(self.spectrum_list)
-            #print(spectrum_list_list)
-            #bla = np.asarray(spectrum_list_list)
-            #peaks = find_peaks_cwt(bla, widths=1018)
-            peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance, width=40)[0]
+            #peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance, width=40)[0]
+            '''
+            amp1 = 50
+            cen1 = 100
+            wid1 = 5
+
+            amp2 = 100
+            cen2 = 150
+            wid2 = 10
+
+            amp3 = 50
+            cen3 = 200
+            wid3 = 5
+
+            popt_3lorentz, pcov_3lorentz = curve_fit(self._3Lorentzian, x_array, y_array_3lorentz, p0=[amp1, cen1, wid1, \
+                                                                                    amp2, cen2, wid2, amp3, cen3, wid3])
+            perr_3lorentz = np.sqrt(np.diag(pcov_3lorentz))
+
+            pars_1 = popt_3lorentz[0:3]
+            pars_2 = popt_3lorentz[3:6]
+            pars_3 = popt_3lorentz[6:9]
+            lorentz_peak_1 = self._1Lorentzian(x_array, *pars_1)
+            lorentz_peak_2 = self._1Lorentzian(x_array, *pars_2)
+            lorentz_peak_3 = self._1Lorentzian(x_array, *pars_3)        
+            '''
+
+
+
         #peaks = np.array([6,162,741])
         print(peaks)
         print("Peaks found over " + str(self.peak_height_min) + " counts at columns: " + str(peaks))
@@ -255,8 +293,9 @@ class iccd_evaluation():
         with open("calibration_file.json", "w", encoding="utf-8") as f:
             json.dump(calibration_dict, f, ensure_ascii=False, indent=4)        
 
+
 if __name__ =='__main__':
-    plot1 = iccd_evaluation("DA")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
+    plot1 = iccd_evaluation("A")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
                                             # You can also set the mode "DA" for calculating a difference absorbance spectrum.                
     #plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
     plot1.iterate()                         # start evaluating process by calling the function evaluate()
