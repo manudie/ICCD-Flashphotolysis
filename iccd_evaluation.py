@@ -21,6 +21,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy import optimize
+from matplotlib.ticker import AutoMinorLocator
+from matplotlib import gridspec
+import matplotlib.ticker as ticker
 
 ### define class ###
 class iccd_evaluation():
@@ -28,8 +31,8 @@ class iccd_evaluation():
     def __init__(self, mode):
         ### constructor that declares class variables (self.x) ###
         self.mode = mode
-        self.test_run = False            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
-        self.show_cal_marks = False
+        self.test_run = True            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
+        self.show_cal_marks = True
         self.drop_first_measurement = True             # In kinetic series w/ single track, often the first line of data is false due to build up charge in the ccd. Setting self.drop_first_measurent to True drops this line of data. Note to acquire n+1 mesaurements! 
         self.file = ""
         self.readout_mode = ""          # Supported: "Full Resolution Image" ("FRI") or "Single Track" ("ST")
@@ -248,31 +251,71 @@ class iccd_evaluation():
         peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance)[0]
         print(peaks)
         if peaks.size > 3:
-            #peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance, width=40)[0]
-            '''
-            amp1 = 50
-            cen1 = 100
-            wid1 = 5
+            peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance, width=40)[0]
+            print(peaks)
+            
+            amp1 = 4000
+            cen1 = 80
+            wid1 = 20
 
-            amp2 = 100
+            amp2 = 13000
             cen2 = 150
             wid2 = 10
 
             amp3 = 50
             cen3 = 200
-            wid3 = 5
+            wid3 = 10
 
-            popt_3lorentz, pcov_3lorentz = curve_fit(self._3Lorentzian, x_array, y_array_3lorentz, p0=[amp1, cen1, wid1, \
+            index_list = np.arange(1,len(self.ascii_grid_transposed.columns)+1) #own code
+            print(self.ascii_grid_transposed)
+            print(index_list)
+
+            popt_3lorentz, pcov_3lorentz = optimize.curve_fit(self._3Lorentzian, index_list, self.spectrum_list, p0=[amp1, cen1, wid1, \
                                                                                     amp2, cen2, wid2, amp3, cen3, wid3])
             perr_3lorentz = np.sqrt(np.diag(pcov_3lorentz))
 
             pars_1 = popt_3lorentz[0:3]
             pars_2 = popt_3lorentz[3:6]
             pars_3 = popt_3lorentz[6:9]
-            lorentz_peak_1 = self._1Lorentzian(x_array, *pars_1)
-            lorentz_peak_2 = self._1Lorentzian(x_array, *pars_2)
-            lorentz_peak_3 = self._1Lorentzian(x_array, *pars_3)        
-            '''
+            lorentz_peak_1 = self._1Lorentzian(index_list, *pars_1)
+            lorentz_peak_2 = self._1Lorentzian(index_list, *pars_2)
+            lorentz_peak_3 = self._1Lorentzian(index_list, *pars_3)     
+
+            print(lorentz_peak_1)   
+            print(lorentz_peak_2)
+            print(lorentz_peak_3)
+            
+            fig = plt.figure(figsize=(4,3))
+            gs = gridspec.GridSpec(1,1)
+            ax1 = fig.add_subplot(gs[0])
+
+            ax1.plot(index_list, self.spectrum_list)
+
+            ax1.plot(index_list, lorentz_peak_1, "g")
+            ax1.fill_between(index_list, lorentz_peak_1.min(), lorentz_peak_1, facecolor="green", alpha=0.2)
+            ax1.plot(index_list, lorentz_peak_2, "r")
+            ax1.fill_between(index_list, lorentz_peak_2.min(), lorentz_peak_2, facecolor="red", alpha=0.2)  
+            ax1.plot(index_list, lorentz_peak_3, "y")           #c
+            ax1.fill_between(index_list, lorentz_peak_3.min(), lorentz_peak_3, facecolor="yellow", alpha=0.2)           #cyan
+            #ax1.set_xlim(-5,105)
+            #ax1.set_ylim(-0.5,5)
+
+            #ax1.set_xlabel("x_array",family="serif",  fontsize=12)
+            #ax1.set_ylabel("y_array",family="serif",  fontsize=12)
+
+            #ax1.xaxis.set_major_locator(ticker.MultipleLocator(50))
+            #ax1.yaxis.set_major_locator(ticker.MultipleLocator(50))
+
+            ax1.xaxis.set_minor_locator(AutoMinorLocator(2))
+            ax1.yaxis.set_minor_locator(AutoMinorLocator(2))
+
+            ax1.tick_params(axis='both',which='major', direction="in", top="on", right="on", bottom="on", length=5, labelsize=8)
+            ax1.tick_params(axis='both',which='minor', direction="in", top="on", right="on", bottom="on", length=3, labelsize=8)
+
+            fig.tight_layout()
+
+            #fig.show()
+            fig.savefig("rawGaussian.png", format="png",dpi=1000)
 
 
 
@@ -295,7 +338,7 @@ class iccd_evaluation():
 
 
 if __name__ =='__main__':
-    plot1 = iccd_evaluation("A")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
+    plot1 = iccd_evaluation("spectrum")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
                                             # You can also set the mode "DA" for calculating a difference absorbance spectrum.                
-    #plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
-    plot1.iterate()                         # start evaluating process by calling the function evaluate()
+    plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
+    #plot1.iterate()                         # start evaluating process by calling the function evaluate()
