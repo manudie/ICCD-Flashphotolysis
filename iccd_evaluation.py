@@ -32,7 +32,7 @@ class iccd_evaluation():
         ### constructor that declares class variables (self.x) ###
         self.mode = mode
         self.test_run = True            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
-        self.show_cal_marks = True
+        self.show_cal_marks = False
         self.drop_first_measurement = True             # In kinetic series w/ single track, often the first line of data is false due to build up charge in the ccd. Setting self.drop_first_measurent to True drops this line of data. Note to acquire n+1 mesaurements! 
         self.file = ""
         self.readout_mode = ""          # Supported: "Full Resolution Image" ("FRI") or "Single Track" ("ST")
@@ -231,7 +231,8 @@ class iccd_evaluation():
             b = 386.25945492645576   
         index_list = np.arange(1,len(self.ascii_grid_transposed.columns)+1)
         self.wavelengths = list(map(lambda x: m*x+b, index_list))
-        #print(self.wavelengths)
+        #print(len(self.wavelengths))
+        #print(self.wavelengths.index(532.4293391415051)+4)
     
     def _1gaussian(self, x, amp1,cen1,sigma1):
         return amp1*(1/(sigma1*(np.sqrt(2*np.pi))))*(np.exp((-1.0/2.0)*(((x-cen1)/sigma1)**2)))
@@ -256,15 +257,15 @@ class iccd_evaluation():
         self.read_file()
         self.calculate_spectrum()
         peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance)[0]
-        print(peaks)
+        #print(peaks)
         if peaks.size > 3:
             peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance, width=40)[0]
-            print(peaks)
+            #print(peaks)
             
 
             index_list = np.arange(1,len(self.ascii_grid_transposed.columns)+1) #own code
-            print(self.ascii_grid_transposed)
-            print(index_list)
+            #print(self.ascii_grid_transposed)
+            #print(index_list)
             
             ########## gauss ##########
             gauss_amp1 = 100
@@ -279,41 +280,40 @@ class iccd_evaluation():
                                                                                           gauss_amp2, gauss_cen2, gauss_sigma2])
             perr_2gauss = np.sqrt(np.diag(pcov_2gauss))
 
-            pars_1 = popt_2gauss[0:3]
-            pars_2 = popt_2gauss[3:6]
-            gauss_peak_1 = self._1gaussian(index_list, *pars_1)
-            gauss_peak_2 = self._1gaussian(index_list, *pars_2)
+            gauss_pars_1 = popt_2gauss[0:3]
+            gauss_pars_2 = popt_2gauss[3:6]
+            gauss_peak_1 = self._1gaussian(index_list, *gauss_pars_1)
+            gauss_peak_2 = self._1gaussian(index_list, *gauss_pars_2)
 
-            print(gauss_peak_1)
-            print(gauss_peak_2)
+            gauss_peak_list = [gauss_pars_1[1], gauss_pars_2[1]]
 
             ########## lorentz ##########
-            amp1 = 4000
-            cen1 = 80
-            wid1 = 20
+            lorentz_amp1 = 4000
+            lorentz_cen1 = 80
+            lorentz_wid1 = 20
 
-            amp2 = 13000
-            cen2 = 150
-            wid2 = 10
+            lorentz_amp2 = 13000
+            lorentz_cen2 = 150
+            lorentz_wid2 = 10
 
-            amp3 = 50
-            cen3 = 200
-            wid3 = 10
+            lorentz_amp3 = 50
+            lorentz_cen3 = 200
+            lorentz_wid3 = 10
 
-            popt_3lorentz, pcov_3lorentz = optimize.curve_fit(self._3Lorentzian, index_list, self.spectrum_list, p0=[amp1, cen1, wid1, \
-                                                                                    amp2, cen2, wid2, amp3, cen3, wid3])
+            popt_3lorentz, pcov_3lorentz = optimize.curve_fit(self._3Lorentzian, index_list, self.spectrum_list, p0=[lorentz_amp1, lorentz_cen1, lorentz_wid1, \
+                                                                                    lorentz_amp2, lorentz_cen2, lorentz_wid2, lorentz_amp3, lorentz_cen3, lorentz_wid3])
             perr_3lorentz = np.sqrt(np.diag(pcov_3lorentz))
 
-            pars_1 = popt_3lorentz[0:3]
-            pars_2 = popt_3lorentz[3:6]
-            pars_3 = popt_3lorentz[6:9]
-            lorentz_peak_1 = self._1Lorentzian(index_list, *pars_1)
-            lorentz_peak_2 = self._1Lorentzian(index_list, *pars_2)
-            lorentz_peak_3 = self._1Lorentzian(index_list, *pars_3)     
+            lorentz_pars_1 = popt_3lorentz[0:3]
+            lorentz_pars_2 = popt_3lorentz[3:6]
+            lorentz_pars_3 = popt_3lorentz[6:9]
+            lorentz_peak_1 = self._1Lorentzian(index_list, *lorentz_pars_1)
+            lorentz_peak_2 = self._1Lorentzian(index_list, *lorentz_pars_2)
+            lorentz_peak_3 = self._1Lorentzian(index_list, *lorentz_pars_3)     
 
-            print(lorentz_peak_1)   
-            print(lorentz_peak_2)
-            print(lorentz_peak_3)
+            #print(lorentz_peak_1)   
+            #print(lorentz_peak_2)
+            #print(lorentz_peak_3)
             
 
             ########## Plot ##########
@@ -363,10 +363,15 @@ class iccd_evaluation():
 
 
         #peaks = np.array([6,162,741])
-        print(peaks)
-        print("Peaks found over " + str(self.peak_height_min) + " counts at columns: " + str(peaks))
-        wavelenght_cal_list = [self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3]
-        m,b = np.polyfit(peaks,wavelenght_cal_list,1)
+        #print(peaks)
+        #print("Peaks found over " + str(self.peak_height_min) + " counts at columns: " + str(peaks))
+        
+        
+        wavelenght_cal_list_2 = [self.wavelenght_cal_2, self.wavelenght_cal_3]
+        wavelenght_cal_list_3 = [self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3]
+        #m,b = np.polyfit(peaks,wavelenght_cal_list_3,1)
+        m,b = np.polyfit(gauss_peak_list,wavelenght_cal_list_2,1)
+        '''
         calibration_dict = {
             "wavelenghts (y):": "columns (x):",
             self.wavelenght_cal_1: int(peaks[0]),
@@ -376,12 +381,21 @@ class iccd_evaluation():
             "m" : float(m),
             "b" : float(b)
         } 
+        '''
+        calibration_dict = {
+            "wavelenghts (y):": "columns (x):",
+            self.wavelenght_cal_2: int(gauss_peak_list[0]),
+            self.wavelenght_cal_3: int(gauss_peak_list[1]),
+            "slope and intercept:": "values:",
+            "m" : float(m),
+            "b" : float(b)
+        } 
         with open("calibration_file.json", "w", encoding="utf-8") as f:
             json.dump(calibration_dict, f, ensure_ascii=False, indent=4)        
 
 
 if __name__ =='__main__':
-    plot1 = iccd_evaluation("spectrum")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
+    plot1 = iccd_evaluation("DA")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
                                             # You can also set the mode "DA" for calculating a difference absorbance spectrum.                
-    plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
-    #plot1.iterate()                         # start evaluating process by calling the function evaluate()
+    #plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
+    plot1.iterate()                         # start evaluating process by calling the function evaluate()
