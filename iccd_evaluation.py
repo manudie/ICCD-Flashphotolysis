@@ -233,10 +233,17 @@ class iccd_evaluation():
         self.wavelengths = list(map(lambda x: m*x+b, index_list))
         #print(self.wavelengths)
     
+    def _1gaussian(self, x, amp1,cen1,sigma1):
+        return amp1*(1/(sigma1*(np.sqrt(2*np.pi))))*(np.exp((-1.0/2.0)*(((x-cen1)/sigma1)**2)))
+
+    def _2gaussian(self, x, amp1,cen1,sigma1, amp2,cen2,sigma2):
+        return amp1*(1/(sigma1*(np.sqrt(2*np.pi))))*(np.exp((-1.0/2.0)*(((x-cen1)/sigma1)**2))) + \
+                amp2*(1/(sigma2*(np.sqrt(2*np.pi))))*(np.exp((-1.0/2.0)*(((x-cen2)/sigma2)**2)))
+
     def _1Lorentzian(self,x, amp, cen, wid):
         return amp*wid**2/((x-cen)**2+wid**2)
 
-    def _3Lorentzian(self,x, amp1, cen1, wid1, amp2,cen2,wid2, amp3,cen3,wid3):
+    def _3Lorentzian(self, x, amp1, cen1, wid1, amp2,cen2,wid2, amp3,cen3,wid3):
         return (amp1*wid1**2/((x-cen1)**2+wid1**2)) +\
                 (amp2*wid2**2/((x-cen2)**2+wid2**2)) +\
                     (amp3*wid3**2/((x-cen3)**2+wid3**2))
@@ -254,6 +261,33 @@ class iccd_evaluation():
             peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance, width=40)[0]
             print(peaks)
             
+
+            index_list = np.arange(1,len(self.ascii_grid_transposed.columns)+1) #own code
+            print(self.ascii_grid_transposed)
+            print(index_list)
+            
+            ########## gauss ##########
+            gauss_amp1 = 100
+            gauss_sigma1 = 10
+            gauss_cen1 = 190
+
+            gauss_amp2 = 7000
+            gauss_sigma2 = 5
+            gauss_cen2 = 520
+
+            popt_2gauss, pcov_2gauss = optimize.curve_fit(self._2gaussian, index_list, self.spectrum_list, p0=[gauss_amp1, gauss_cen1, gauss_sigma1, \
+                                                                                          gauss_amp2, gauss_cen2, gauss_sigma2])
+            perr_2gauss = np.sqrt(np.diag(pcov_2gauss))
+
+            pars_1 = popt_2gauss[0:3]
+            pars_2 = popt_2gauss[3:6]
+            gauss_peak_1 = self._1gaussian(index_list, *pars_1)
+            gauss_peak_2 = self._1gaussian(index_list, *pars_2)
+
+            print(gauss_peak_1)
+            print(gauss_peak_2)
+
+            ########## lorentz ##########
             amp1 = 4000
             cen1 = 80
             wid1 = 20
@@ -265,10 +299,6 @@ class iccd_evaluation():
             amp3 = 50
             cen3 = 200
             wid3 = 10
-
-            index_list = np.arange(1,len(self.ascii_grid_transposed.columns)+1) #own code
-            print(self.ascii_grid_transposed)
-            print(index_list)
 
             popt_3lorentz, pcov_3lorentz = optimize.curve_fit(self._3Lorentzian, index_list, self.spectrum_list, p0=[amp1, cen1, wid1, \
                                                                                     amp2, cen2, wid2, amp3, cen3, wid3])
@@ -285,18 +315,31 @@ class iccd_evaluation():
             print(lorentz_peak_2)
             print(lorentz_peak_3)
             
+
+            ########## Plot ##########
+
             fig = plt.figure(figsize=(4,3))
             gs = gridspec.GridSpec(1,1)
             ax1 = fig.add_subplot(gs[0])
 
             ax1.plot(index_list, self.spectrum_list)
 
-            ax1.plot(index_list, lorentz_peak_1, "g")
-            ax1.fill_between(index_list, lorentz_peak_1.min(), lorentz_peak_1, facecolor="green", alpha=0.2)
-            ax1.plot(index_list, lorentz_peak_2, "r")
-            ax1.fill_between(index_list, lorentz_peak_2.min(), lorentz_peak_2, facecolor="red", alpha=0.2)  
-            ax1.plot(index_list, lorentz_peak_3, "y")           #c
-            ax1.fill_between(index_list, lorentz_peak_3.min(), lorentz_peak_3, facecolor="yellow", alpha=0.2)           #cyan
+
+            ax1.plot(index_list, gauss_peak_1, "yellow")
+            ax1.fill_between(index_list, gauss_peak_1.min(), gauss_peak_1, facecolor="yellow", alpha=0.2)
+            ax1.plot(index_list, gauss_peak_2, "orange")
+            ax1.fill_between(index_list, gauss_peak_2.min(), gauss_peak_2, facecolor="orange", alpha=0.2)  
+
+            '''
+            ax1.plot(index_list, lorentz_peak_1, "indianred")
+            ax1.fill_between(index_list, lorentz_peak_1.min(), lorentz_peak_1, facecolor="indianred", alpha=0.2)
+            '''
+            ax1.plot(index_list, lorentz_peak_2, "palegreen")
+            ax1.fill_between(index_list, lorentz_peak_2.min(), lorentz_peak_2, facecolor="palegreen", alpha=0.2)  
+            ax1.plot(index_list, lorentz_peak_3, "palegreen")           #c
+            ax1.fill_between(index_list, lorentz_peak_3.min(), lorentz_peak_3, facecolor="palegreen", alpha=0.2)           #cyan
+            
+
             #ax1.set_xlim(-5,105)
             #ax1.set_ylim(-0.5,5)
 
