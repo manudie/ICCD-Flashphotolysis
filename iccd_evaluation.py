@@ -31,12 +31,16 @@ class iccd_evaluation():
     def __init__(self, mode):
         ### constructor that declares class variables (self.x) ###
         self.mode = mode
-        self.test_run = False            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
-        self.show_cal_marks = False
+        self.test_run = True            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
         self.drop_first_measurement = False             # In kinetic series w/ single track, often the first line of data is false due to build up charge in the ccd. Setting self.drop_first_measurent to True drops this line of data. Note to acquire n+1 mesaurements! 
+        self.single_row = False
+        self.calibration_points = 2
+        self.calibration_fit_peaks = True
+        self.calibration_fit_mode = "gauss"           # "gauss", "lorentz" or "voigt"
+        self.plot_calibration_fit = True         
+        self.show_calibration_marks = True
         self.file = ""
         self.readout_mode = ""          # Supported: "Full Resolution Image" ("FRI") or "Single Track" ("ST")
-        self.single_row = False
         self.input_row = 255
         self.mean_row_start = 250
         self.mean_row_end = 550
@@ -166,22 +170,53 @@ class iccd_evaluation():
         else:
             spectrum = self.spectrum_list
         self.get_calibration()           
-        plt.plot(self.wavelengths, spectrum, linewidth=1)
-        plt.title(label=self.title, pad=-262, loc="left")
-        plt.xlabel("wavelength λ / nm")
+        fig = plt.figure(figsize=(4,3))
+        gs = gridspec.GridSpec(1,1)
+        ax1 = fig.add_subplot(gs[0])
+        ax1.plot(self.wavelengths, spectrum, linewidth=1)
+        plt.title(label=self.title, pad=-262, loc="left", family="serif", fontsize=8)
+        plt.xlabel("wavelength λ / nm", family="serif", fontsize=8)
         if self.mode == "DA":
-            plt.ylabel("difference absorbance ΔA")
+            plt.ylabel("difference absorbance ΔA", family="serif", fontsize=8)
         elif self.mode == "A":
-            plt.ylabel("absorbance A")
+            plt.ylabel("absorbance A", family="serif", fontsize=8)
         else:
-            plt.ylabel("counts")
-        if self.show_cal_marks == True:
-            plt.vlines([self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3], ymin=self.spectrum_list.min(), ymax=self.spectrum_list.max(), color="grey", linewidth=0.5)
+            plt.ylabel("counts", family="serif", fontsize=8)
+        if self.calibration_fit_peaks == True and self.plot_calibration_fit == True and self.calibration_fit_mode == "gauss":
+            ax1.plot(self.wavelengths, self.gauss_peak_1, "orange")
+            ax1.fill_between(self.wavelengths, self.gauss_peak_1.min(), self.gauss_peak_1, facecolor="orange", alpha=0.2)
+            ax1.plot(self.wavelengths, self.gauss_peak_2, "orange")
+            ax1.fill_between(self.wavelengths, self.gauss_peak_2.min(), self.gauss_peak_2, facecolor="orange", alpha=0.2)  
+        elif self.calibration_fit_peaks == True and self.plot_calibration_fit == True and self.calibration_fit_mode == "lorentz":
+            '''
+            ax1.plot(self.wavelengths, self.lorentz_peak_1, "indianred")
+            ax1.fill_between(self.wavelengths, self.lorentz_peak_1.min(), self.lorentz_peak_1, facecolor="indianred", alpha=0.2)
+            '''
+            ax1.plot(self.wavelengths, self.lorentz_peak_2, "palegreen")
+            ax1.fill_between(self.wavelengths, self.lorentz_peak_2.min(), self.lorentz_peak_2, facecolor="palegreen", alpha=0.2)  
+            ax1.plot(self.wavelengths, self.lorentz_peak_3, "palegreen")           #c
+            ax1.fill_between(self.wavelengths, self.lorentz_peak_3.min(), self.lorentz_peak_3, facecolor="palegreen", alpha=0.2)           #cyan
+        elif self.calibration_fit_peaks == True and self.plot_calibration_fit == True and self.calibration_fit_mode == "voigt":    
+            pass
+        if self.show_calibration_marks == True:
+            if self.calibration_points == 2:
+                plt.vlines([self.wavelenght_cal_2, self.wavelenght_cal_3], ymin=self.spectrum_list.min(), ymax=self.spectrum_list.max(), color="grey", linewidth=0.5)
+            elif self.calibration_points == 3:
+                plt.vlines([self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3], ymin=self.spectrum_list.min(), ymax=self.spectrum_list.max(), color="grey", linewidth=0.5)
+        #ax1.set_xlim(-5,105)
+        #ax1.set_ylim(-0.5,5)
+        #ax1.xaxis.set_major_locator(ticker.MultipleLocator(50))
+        #ax1.yaxis.set_major_locator(ticker.MultipleLocator(50))
+        ax1.xaxis.set_minor_locator(AutoMinorLocator(2))
+        ax1.yaxis.set_minor_locator(AutoMinorLocator(2))
+        ax1.tick_params(axis='both',which='major', direction="in", top="on", right="on", bottom="on", length=5, labelsize=8)
+        ax1.tick_params(axis='both',which='minor', direction="in", top="on", right="on", bottom="on", length=3, labelsize=8)
+        fig.tight_layout()
         if self.test_run == True: 
             plt.show()
         else:
-            plt.savefig(self.image_filename + "_spectrum", bbox_inches="tight")
-        plt.clf()
+            fig.savefig(self.image_filename + "_spectrum", bbox_inches="tight", dpi=1000)
+        fig.clf()
     
     def plot_heatmap(self):
         ### plots the generated dataframe to a heatmap and saves it to the current folder ###
@@ -229,8 +264,8 @@ class iccd_evaluation():
             print("No calibration file found! Spectrum will be generated with false values!")
             m = 0.3033110988290711   
             b = 386.25945492645576   
-        index_list = np.arange(1,len(self.ascii_grid_transposed.columns)+1)
-        self.wavelengths = list(map(lambda x: m*x+b, index_list))
+        self.index_list = np.arange(1,len(self.ascii_grid_transposed.columns)+1)
+        self.wavelengths = list(map(lambda x: m*x+b, self.index_list))
         #print(len(self.wavelengths))
         #print(self.wavelengths.index(532.4293391415051)+4)
     
@@ -262,140 +297,83 @@ class iccd_evaluation():
             peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance, width=40)[0]
             #print(peaks)
             
+            if self.calibration_fit_peaks == True:
+                self.index_list = np.arange(1,len(self.ascii_grid_transposed.columns)+1) 
+                if self.calibration_fit_mode == "gauss":
+                    ########## gauss ##########
+                    gauss_amp1 = 100
+                    gauss_sigma1 = 10
+                    gauss_cen1 = 190
+                    gauss_amp2 = 7000
+                    gauss_sigma2 = 5
+                    gauss_cen2 = 520
+                    popt_2gauss, pcov_2gauss = optimize.curve_fit(self._2gaussian, self.index_list, self.spectrum_list, p0=[gauss_amp1, gauss_cen1, gauss_sigma1, gauss_amp2, gauss_cen2, gauss_sigma2])
+                    perr_2gauss = np.sqrt(np.diag(pcov_2gauss))
+                    gauss_pars_1 = popt_2gauss[0:3]
+                    gauss_pars_2 = popt_2gauss[3:6]
+                    self.gauss_peak_1 = self._1gaussian(self.index_list, *gauss_pars_1)
+                    self.gauss_peak_2 = self._1gaussian(self.index_list, *gauss_pars_2)
+                    fit_peak_list = [gauss_pars_1[1], gauss_pars_2[1]]
+                elif self.calibration_fit_mode == "lorentz":
+                ########## lorentz ##########
+                    lorentz_amp1 = 4000
+                    lorentz_cen1 = 80
+                    lorentz_wid1 = 20
+                    lorentz_amp2 = 13000
+                    lorentz_cen2 = 150
+                    lorentz_wid2 = 10
+                    lorentz_amp3 = 50
+                    lorentz_cen3 = 200
+                    lorentz_wid3 = 10
+                    popt_3lorentz, pcov_3lorentz = optimize.curve_fit(self._3Lorentzian, self.index_list, self.spectrum_list, p0=[lorentz_amp1, lorentz_cen1, lorentz_wid1, lorentz_amp2, lorentz_cen2, lorentz_wid2, lorentz_amp3, lorentz_cen3, lorentz_wid3])
+                    perr_3lorentz = np.sqrt(np.diag(pcov_3lorentz))
+                    lorentz_pars_1 = popt_3lorentz[0:3]
+                    lorentz_pars_2 = popt_3lorentz[3:6]
+                    lorentz_pars_3 = popt_3lorentz[6:9]
+                    self.lorentz_peak_1 = self._1Lorentzian(self.index_list, *lorentz_pars_1)
+                    self.lorentz_peak_2 = self._1Lorentzian(self.index_list, *lorentz_pars_2)
+                    self.lorentz_peak_3 = self._1Lorentzian(self.index_list, *lorentz_pars_3)     
+                    fit_peak_list = [lorentz_pars_2[1], lorentz_pars_3[1]]
+                elif self.calibration_fit_mode == "voigt":
+                    pass
+                    ########## enter voigt calculation here ##########
 
-            index_list = np.arange(1,len(self.ascii_grid_transposed.columns)+1) #own code
-            #print(self.ascii_grid_transposed)
-            #print(index_list)
-            
-            ########## gauss ##########
-            gauss_amp1 = 100
-            gauss_sigma1 = 10
-            gauss_cen1 = 190
-
-            gauss_amp2 = 7000
-            gauss_sigma2 = 5
-            gauss_cen2 = 520
-
-            popt_2gauss, pcov_2gauss = optimize.curve_fit(self._2gaussian, index_list, self.spectrum_list, p0=[gauss_amp1, gauss_cen1, gauss_sigma1, \
-                                                                                          gauss_amp2, gauss_cen2, gauss_sigma2])
-            perr_2gauss = np.sqrt(np.diag(pcov_2gauss))
-
-            gauss_pars_1 = popt_2gauss[0:3]
-            gauss_pars_2 = popt_2gauss[3:6]
-            gauss_peak_1 = self._1gaussian(index_list, *gauss_pars_1)
-            gauss_peak_2 = self._1gaussian(index_list, *gauss_pars_2)
-
-            gauss_peak_list = [gauss_pars_1[1], gauss_pars_2[1]]
-
-            ########## lorentz ##########
-            lorentz_amp1 = 4000
-            lorentz_cen1 = 80
-            lorentz_wid1 = 20
-
-            lorentz_amp2 = 13000
-            lorentz_cen2 = 150
-            lorentz_wid2 = 10
-
-            lorentz_amp3 = 50
-            lorentz_cen3 = 200
-            lorentz_wid3 = 10
-
-            popt_3lorentz, pcov_3lorentz = optimize.curve_fit(self._3Lorentzian, index_list, self.spectrum_list, p0=[lorentz_amp1, lorentz_cen1, lorentz_wid1, \
-                                                                                    lorentz_amp2, lorentz_cen2, lorentz_wid2, lorentz_amp3, lorentz_cen3, lorentz_wid3])
-            perr_3lorentz = np.sqrt(np.diag(pcov_3lorentz))
-
-            lorentz_pars_1 = popt_3lorentz[0:3]
-            lorentz_pars_2 = popt_3lorentz[3:6]
-            lorentz_pars_3 = popt_3lorentz[6:9]
-            lorentz_peak_1 = self._1Lorentzian(index_list, *lorentz_pars_1)
-            lorentz_peak_2 = self._1Lorentzian(index_list, *lorentz_pars_2)
-            lorentz_peak_3 = self._1Lorentzian(index_list, *lorentz_pars_3)     
-
-            #print(lorentz_peak_1)   
-            #print(lorentz_peak_2)
-            #print(lorentz_peak_3)
-            
-
-            ########## Plot ##########
-
-            fig = plt.figure(figsize=(4,3))
-            gs = gridspec.GridSpec(1,1)
-            ax1 = fig.add_subplot(gs[0])
-
-            ax1.plot(index_list, self.spectrum_list)
-
-
-            ax1.plot(index_list, gauss_peak_1, "yellow")
-            ax1.fill_between(index_list, gauss_peak_1.min(), gauss_peak_1, facecolor="yellow", alpha=0.2)
-            ax1.plot(index_list, gauss_peak_2, "orange")
-            ax1.fill_between(index_list, gauss_peak_2.min(), gauss_peak_2, facecolor="orange", alpha=0.2)  
-
-            '''
-            ax1.plot(index_list, lorentz_peak_1, "indianred")
-            ax1.fill_between(index_list, lorentz_peak_1.min(), lorentz_peak_1, facecolor="indianred", alpha=0.2)
-            '''
-            ax1.plot(index_list, lorentz_peak_2, "palegreen")
-            ax1.fill_between(index_list, lorentz_peak_2.min(), lorentz_peak_2, facecolor="palegreen", alpha=0.2)  
-            ax1.plot(index_list, lorentz_peak_3, "palegreen")           #c
-            ax1.fill_between(index_list, lorentz_peak_3.min(), lorentz_peak_3, facecolor="palegreen", alpha=0.2)           #cyan
-            
-
-            #ax1.set_xlim(-5,105)
-            #ax1.set_ylim(-0.5,5)
-
-            #ax1.set_xlabel("x_array",family="serif",  fontsize=12)
-            #ax1.set_ylabel("y_array",family="serif",  fontsize=12)
-
-            #ax1.xaxis.set_major_locator(ticker.MultipleLocator(50))
-            #ax1.yaxis.set_major_locator(ticker.MultipleLocator(50))
-
-            ax1.xaxis.set_minor_locator(AutoMinorLocator(2))
-            ax1.yaxis.set_minor_locator(AutoMinorLocator(2))
-
-            ax1.tick_params(axis='both',which='major', direction="in", top="on", right="on", bottom="on", length=5, labelsize=8)
-            ax1.tick_params(axis='both',which='minor', direction="in", top="on", right="on", bottom="on", length=3, labelsize=8)
-
-            fig.tight_layout()
-
-            #fig.show()
-            fig.savefig("rawGaussian.png", format="png",dpi=1000)
-
-
-
-        #peaks = np.array([6,162,741])
-        #print(peaks)
         #print("Peaks found over " + str(self.peak_height_min) + " counts at columns: " + str(peaks))
-        
-        
+                
         wavelenght_cal_list_2 = [self.wavelenght_cal_2, self.wavelenght_cal_3]
         wavelenght_cal_list_3 = [self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3]
         #m,b = np.polyfit(peaks,wavelenght_cal_list_3,1)
-        m,b = np.polyfit(gauss_peak_list,wavelenght_cal_list_2,1)
-        '''
-        calibration_dict = {
+        m,b = np.polyfit(fit_peak_list,wavelenght_cal_list_2,1)
+        if self.calibration_fit_peaks == True:
+            dict_peaks = fit_peak_list
+        else:
+            dict_peaks = peaks
+        if self.calibration_points == 2:
+            calibration_dict = {
             "wavelenghts (y):": "columns (x):",
-            self.wavelenght_cal_1: int(peaks[0]),
-            self.wavelenght_cal_2: int(peaks[1]),
-            self.wavelenght_cal_3: int(peaks[2]),
+            self.wavelenght_cal_2: int(dict_peaks[0]),
+            self.wavelenght_cal_3: int(dict_peaks[1]),
             "slope and intercept:": "values:",
             "m" : float(m),
             "b" : float(b)
         } 
-        '''
-        calibration_dict = {
-            "wavelenghts (y):": "columns (x):",
-            self.wavelenght_cal_2: int(gauss_peak_list[0]),
-            self.wavelenght_cal_3: int(gauss_peak_list[1]),
-            "slope and intercept:": "values:",
-            "m" : float(m),
-            "b" : float(b)
-        } 
+        elif self.calibration_points == 3:
+            calibration_dict = {
+                "wavelenghts (y):": "columns (x):",
+                self.wavelenght_cal_1: int(dict_peaks[0]),
+                self.wavelenght_cal_2: int(dict_peaks[1]),
+                self.wavelenght_cal_3: int(dict_peaks[2]),
+                "slope and intercept:": "values:",
+                "m" : float(m),
+                "b" : float(b)
+            }         
         with open("calibration_file.json", "w", encoding="utf-8") as f:
             json.dump(calibration_dict, f, ensure_ascii=False, indent=4)        
 
+        self.plot_spectrum()
 
 if __name__ =='__main__':
-    plot1 = iccd_evaluation("DA")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
+    plot1 = iccd_evaluation("spectrum")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
                                             # You can also set the mode "DA" for calculating a difference absorbance spectrum.                
-    #plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
-    plot1.iterate()                         # start evaluating process by calling the function evaluate()
+    plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
+    #plot1.iterate()                         # start evaluating process by calling the function evaluate()
