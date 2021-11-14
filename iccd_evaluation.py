@@ -38,7 +38,7 @@ class iccd_evaluation():
         self.calibration_fit_peaks = True
         self.calibration_fit_mode = "gauss"           # "gauss", "lorentz" or "voigt"
         self.plot_calibration_fit = True         
-        self.show_calibration_marks = True
+        self.show_calibration_marks = False
         self.file = ""
         self.readout_mode = ""          # Supported: "Full Resolution Image" ("FRI") or "Single Track" ("ST")
         self.input_row = 255
@@ -174,7 +174,7 @@ class iccd_evaluation():
         gs = gridspec.GridSpec(1,1)
         ax1 = fig.add_subplot(gs[0])
         ax1.plot(self.wavelengths, spectrum, linewidth=1)
-        plt.title(label=self.title, pad=-262, loc="left", family="serif", fontsize=8)
+        #plt.title(label=self.title, pad=-262, loc="left", family="serif", fontsize=8)
         plt.xlabel("wavelength λ / nm", family="serif", fontsize=8)
         if self.mode == "DA":
             plt.ylabel("difference absorbance ΔA", family="serif", fontsize=8)
@@ -197,16 +197,19 @@ class iccd_evaluation():
             ax1.plot(self.wavelengths, self.lorentz_peak_3, "palegreen")           #c
             ax1.fill_between(self.wavelengths, self.lorentz_peak_3.min(), self.lorentz_peak_3, facecolor="palegreen", alpha=0.2)           #cyan
         elif self.calibration_fit_peaks == True and self.plot_calibration_fit == True and self.calibration_fit_mode == "voigt":    
-            pass
+            ax1.plot(self.wavelengths, self.voigt_peak_2, "blueviolet")
+            ax1.fill_between(self.wavelengths, self.voigt_peak_2.min(), self.voigt_peak_2, facecolor="blueviolet", alpha=0.2)  
+            ax1.plot(self.wavelengths, self.voigt_peak_3, "blueviolet")           #c
+            ax1.fill_between(self.wavelengths, self.voigt_peak_3.min(), self.voigt_peak_3, facecolor="blueviolet", alpha=0.2)           #cyan
         if self.show_calibration_marks == True:
             if self.calibration_points == 2:
                 plt.vlines([self.wavelenght_cal_2, self.wavelenght_cal_3], ymin=self.spectrum_list.min(), ymax=self.spectrum_list.max(), color="grey", linewidth=0.5)
             elif self.calibration_points == 3:
                 plt.vlines([self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3], ymin=self.spectrum_list.min(), ymax=self.spectrum_list.max(), color="grey", linewidth=0.5)
-        #ax1.set_xlim(-5,105)
-        #ax1.set_ylim(-0.5,5)
         #ax1.xaxis.set_major_locator(ticker.MultipleLocator(50))
         #ax1.yaxis.set_major_locator(ticker.MultipleLocator(50))
+        plt.xticks(family="serif", fontsize=8)
+        plt.yticks(family="serif", fontsize=8)
         ax1.xaxis.set_minor_locator(AutoMinorLocator(2))
         ax1.yaxis.set_minor_locator(AutoMinorLocator(2))
         ax1.tick_params(axis='both',which='major', direction="in", top="on", right="on", bottom="on", length=5, labelsize=8)
@@ -284,6 +287,15 @@ class iccd_evaluation():
                 (amp2*wid2**2/((x-cen2)**2+wid2**2)) +\
                     (amp3*wid3**2/((x-cen3)**2+wid3**2))
     
+    def _1Voigt(self, x, ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1):
+        return (ampG1*(1/(sigmaG1*(np.sqrt(2*np.pi))))*(np.exp(-((x-cenG1)**2)/((2*sigmaG1)**2)))) +\
+              ((ampL1*widL1**2/((x-cenL1)**2+widL1**2)) )
+
+    def _3Voigt(self, x, ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1, ampG2, cenG2, sigmaG2, ampL2, cenL2, widL2, ampG3, cenG3, sigmaG3, ampL3, cenL3, widL3):
+        return (ampG1*(1/(sigmaG1*(np.sqrt(2*np.pi))))*(np.exp(-((x-cenG1)**2)/((2*sigmaG1)**2)))) + ((ampL1*widL1**2/((x-cenL1)**2+widL1**2)) ) +\
+                (ampG2*(1/(sigmaG2*(np.sqrt(2*np.pi))))*(np.exp(-((x-cenG2)**2)/((2*sigmaG2)**2)))) + ((ampL2*widL2**2/((x-cenL2)**2+widL2**2)) ) +\
+                    (ampG3*(1/(sigmaG3*(np.sqrt(2*np.pi))))*(np.exp(-((x-cenG3)**2)/((2*sigmaG3)**2)))) + ((ampL3*widL3**2/((x-cenL3)**2+widL3**2)) ) 
+
     def calibrate(self):
         ### In calibrate() mode this function will search for the column numbers of three peaks in the spectrum of the calibration lamp. 
         # The peaks will be determined by their height, set by self.peak_height_min. 
@@ -311,11 +323,11 @@ class iccd_evaluation():
                     perr_2gauss = np.sqrt(np.diag(pcov_2gauss))
                     gauss_pars_1 = popt_2gauss[0:3]
                     gauss_pars_2 = popt_2gauss[3:6]
-                    self.gauss_peak_1 = self._1gaussian(self.index_list, *gauss_pars_1)
-                    self.gauss_peak_2 = self._1gaussian(self.index_list, *gauss_pars_2)
+                    self.gauss_peak_1 = self._1gaussian(self.index_list, *gauss_pars_1) + self.spectrum_list.min()
+                    self.gauss_peak_2 = self._1gaussian(self.index_list, *gauss_pars_2) + self.spectrum_list.min()
                     fit_peak_list = [gauss_pars_1[1], gauss_pars_2[1]]
                 elif self.calibration_fit_mode == "lorentz":
-                ########## lorentz ##########
+                    ########## lorentz ##########
                     lorentz_amp1 = 4000
                     lorentz_cen1 = 80
                     lorentz_wid1 = 20
@@ -330,24 +342,50 @@ class iccd_evaluation():
                     lorentz_pars_1 = popt_3lorentz[0:3]
                     lorentz_pars_2 = popt_3lorentz[3:6]
                     lorentz_pars_3 = popt_3lorentz[6:9]
-                    self.lorentz_peak_1 = self._1Lorentzian(self.index_list, *lorentz_pars_1)
-                    self.lorentz_peak_2 = self._1Lorentzian(self.index_list, *lorentz_pars_2)
-                    self.lorentz_peak_3 = self._1Lorentzian(self.index_list, *lorentz_pars_3)     
+                    self.lorentz_peak_1 = self._1Lorentzian(self.index_list, *lorentz_pars_1) + self.spectrum_list.min()
+                    self.lorentz_peak_2 = self._1Lorentzian(self.index_list, *lorentz_pars_2) + self.spectrum_list.min()
+                    self.lorentz_peak_3 = self._1Lorentzian(self.index_list, *lorentz_pars_3) + self.spectrum_list.min()     
                     fit_peak_list = [lorentz_pars_2[1], lorentz_pars_3[1]]
                 elif self.calibration_fit_mode == "voigt":
-                    pass
-                    ########## enter voigt calculation here ##########
+                    ########## voigt ##########
+                    voigt_ampG1 = 5000
+                    voigt_cenG1 = 60
+                    voigt_sigmaG1 = 5
+                    voigt_ampL1 = 5000
+                    voigt_cenL1 = 5
+                    voigt_widL1 = 50
+                    voigt_ampG2 = 100
+                    voigt_cenG2 = 190
+                    voigt_sigmaG2 = 10
+                    voigt_ampL2 = 13000
+                    voigt_cenL2 = 160
+                    voigt_widL2 = 20
+                    voigt_ampG3 = 7000
+                    voigt_cenG3 = 520
+                    voigt_sigmaG3 = 5
+                    voigt_ampL3 = 7000
+                    voigt_cenL3 = 520
+                    voigt_widL3 = 20
+                    popt_3voigt, pcov_1voigt = optimize.curve_fit(self._3Voigt, self.index_list, self.spectrum_list, p0=[voigt_ampG1, voigt_cenG1, voigt_sigmaG1, voigt_ampL1, voigt_cenL1, voigt_widL1, voigt_ampG2, voigt_cenG2, voigt_sigmaG2, voigt_ampL2, voigt_cenL2, voigt_widL2, voigt_ampG3, voigt_cenG3, voigt_sigmaG3, voigt_ampL3, voigt_cenL3, voigt_widL3])
+                    perr_3voigt = np.sqrt(np.diag(pcov_1voigt))                    
+                    voigt_pars_1 = popt_3voigt[0:6]
+                    voigt_pars_2 = popt_3voigt[6:12]
+                    voigt_pars_3 = popt_3voigt[12:18]                    
+                    self.voigt_peak_1 = self._1Voigt(self.index_list, *voigt_pars_1) + self.spectrum_list.min()
+                    self.voigt_peak_2 = self._1Voigt(self.index_list, *voigt_pars_2) + self.spectrum_list.min()
+                    self.voigt_peak_3 = self._1Voigt(self.index_list, *voigt_pars_3) + self.spectrum_list.min()  
+                    fit_peak_list = [voigt_pars_2[1], voigt_pars_3[1]]
+
 
         #print("Peaks found over " + str(self.peak_height_min) + " counts at columns: " + str(peaks))
-                
+        if self.calibration_fit_peaks == True:
+            dict_peaks = fit_peak_list
+        else:
+            dict_peaks = peaks                
         wavelenght_cal_list_2 = [self.wavelenght_cal_2, self.wavelenght_cal_3]
         wavelenght_cal_list_3 = [self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3]
         #m,b = np.polyfit(peaks,wavelenght_cal_list_3,1)
         m,b = np.polyfit(fit_peak_list,wavelenght_cal_list_2,1)
-        if self.calibration_fit_peaks == True:
-            dict_peaks = fit_peak_list
-        else:
-            dict_peaks = peaks
         if self.calibration_points == 2:
             calibration_dict = {
             "wavelenghts (y):": "columns (x):",
