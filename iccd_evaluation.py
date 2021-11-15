@@ -106,7 +106,7 @@ class iccd_evaluation():
                     filename_list = []
             if self.stack_DA_spectra == True:
                 self.plot_spectrum()
-                self.move_files() 
+            self.move_files() 
                   
     def evaluate(self):
         ### decides what to plot, given on the parameter ("heatmap", "spectrum", or "both") the class is called with ###
@@ -210,24 +210,24 @@ class iccd_evaluation():
                 spectrum = self.diff_absorbance_list
             else:
                 spectrum = self.spectrum_list
-                ax1.plot(self.wavelengths, spectrum, linewidth=0.5)
+            ax1.plot(self.wavelengths, spectrum, linewidth=0.4)
         elif self.stack_DA_spectra == True:
             f = open("legend_labels.json")
             label_dict = json.load(f)
             f.close()
             label_order_list = [*label_dict.keys()]
             self.DA_spectra_dict = dict(sorted(self.DA_spectra_dict.items(), key=lambda pair: label_order_list.index(pair[0])))
-            colors = pl.cm.nipy_spectral(np.linspace(0,1,len(self.DA_spectra_dict)))
+            colors = pl.cm.turbo(np.linspace(0,1,len(self.DA_spectra_dict)))
             i = 0
             for key in self.DA_spectra_dict:
                 try:
                     f = open("legend_labels.json", encoding='utf8')
                     label_dict = json.load(f)
                     f.close()
-                    ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=0.5,  label=label_dict[key])
+                    ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=0.4,  label=label_dict[key])
                 except:
                     print("No label file found!")
-                    ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=0.5, label=key)
+                    ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=0.4, label=key)
                 ax1.legend(loc="lower right", prop={'family':"serif", 'size':5.8})
                 i += 1
         #plt.title(label=self.title, pad=-262, loc="left", family="serif", fontsize=8)
