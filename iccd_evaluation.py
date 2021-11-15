@@ -7,7 +7,7 @@ It is essential, to export the data as an .asc (ASCII) file and append acquisiti
 The exportet data than just needs to be in the same folder as this evaluation script. It is possible to place multiple files of raw .asc data into to folder, the script will iterate through every single one.
 To decide wether to plot a heatmap, a spectrum or both just create an object from the class iccd_evaluation("String") and change "String" to "heatmap", "spectrum", or "both", e.g. plot1 = iccd_evaluation("both").
 The spectrum is calculated as mean from rows in the image. By changing the values of self.mean_row_start and self.mean_row_end you can determine the span of rows, the  mean is calculated from.
-By switching self.single_row to True, it is possible to generate the spectrum from a single row of pixels from the image, instead of mulitple rows. You can select the single row by changing the value of self.input_row.
+By switching self.single_row to True, it is possible to generate the spectrum from a single row of pixels from the image, instead of mulitple rows. You can select the single row by changing the value of self.single_row.
 Calling the function plot1.evaluate() then starts the evaluation. Note that only in case of "both" the area wherefrom the mean for the spectrum is created is shown in red on the heatmap. To avoid the red area, just plot the heatmap and spectrum individual. 
 The script will create folders for the plotted images, aswell as for processed data and will sort the files into these folders after it finished evaluating them. 
 
@@ -25,34 +25,39 @@ from scipy import optimize
 from matplotlib.ticker import AutoMinorLocator
 from matplotlib import gridspec
 import matplotlib.ticker as ticker
+import matplotlib.pylab as pl
 
 ### define class ###
 class iccd_evaluation():
     
     def __init__(self, mode):
-        ### constructor that declares class variables (self.x) ###
-        self.mode = mode
-        self.test_run = False            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
+        ##### Options to set by user #####
+        self.test_run = True            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
         self.drop_first_measurement = False             # In kinetic series w/ single track, often the first line of data is false due to build up charge in the ccd. Setting self.drop_first_measurent to True drops this line of data. Note to acquire n+1 mesaurements! 
-        self.single_row = False
+        self.stack_DA_spectra = True
+        self.mean_row_start = 250
+        self.mean_row_end = 550
+        self.single_row_mode = False
+        self.single_row = 255
         self.calibration_points = 2
+        self.peak_height_min = 2500
+        self.peak_distance = 20
         self.calibration_fit_peaks = True
         self.calibration_fit_mode = "gauss"           # "gauss", "lorentz" or "voigt"
         self.plot_calibration_fit = True         
         self.show_calibration_marks = False
+
+        ##### Constructor that declares class variables (self.x) #####
+        self.mode = mode
         self.file = ""
         self.readout_mode = ""          # Supported: "Full Resolution Image" ("FRI") or "Single Track" ("ST")
-        self.input_row = 255
-        self.mean_row_start = 250
-        self.mean_row_end = 550
-        self.peak_height_min = 2500
-        self.peak_distance = 20
         self.wavelenght_cal_1 = 404.6565
         self.wavelenght_cal_2 = 435.8335
         self.wavelenght_cal_3 = 546.0750
         self.directory = os.getcwd()
-        self.AD_I0D_list = ["_D_","_I0_","_I_"]
-        self.AD_dict = {}
+        self.DA_I0D_list = ["_D_","_I0_","_I_"]
+        self.DA_dict = {}
+        self.DA_spectra_dict = {}
         self.calibration_mode = False
     
     def iterate(self):
@@ -71,12 +76,12 @@ class iccd_evaluation():
             for entry in os.scandir(self.directory):
                 if entry.path.endswith(".asc") and entry.is_file():
                     self.file = entry.path
-                    for el in self.AD_I0D_list:
+                    for el in self.DA_I0D_list:
                         if el in self.file:
                             experiment = self.file.replace(el,"_")
                             for experiment_entry in os.scandir(self.directory):
                                 if experiment_entry.path.endswith(".asc") and experiment_entry.is_file():
-                                    current_experiment = experiment_entry.path.replace(self.AD_I0D_list[DA_file_counter],"_")
+                                    current_experiment = experiment_entry.path.replace(self.DA_I0D_list[DA_file_counter],"_")
                                     if current_experiment == experiment:
                                         DA_file_counter += 1
                                         filename_list.append(experiment_entry.path)
@@ -89,16 +94,20 @@ class iccd_evaluation():
                         self.file = el
                         self.read_file()
                         self.calculate_spectrum()
-                        for el in self.AD_I0D_list:
+                        for el in self.DA_I0D_list:
                             if el in self.title:
-                                self.AD_dict.update({el.replace("_",""):self.spectrum_list})
+                                self.DA_dict.update({el.replace("_",""):self.spectrum_list})
                         self.move_files() 
                     self.calculate_diff_absorbance()
-                    self.plot_spectrum()
+                    if self.stack_DA_spectra == False:
+                        self.plot_spectrum()
                     self.move_files() 
                     DA_file_counter = 0
                     filename_list = []
-       
+            if self.stack_DA_spectra == True:
+                self.plot_spectrum()
+                self.move_files() 
+                  
     def evaluate(self):
         ### decides what to plot, given on the parameter ("heatmap", "spectrum", or "both") the class is called with ###
         if self.mode == "spectrum":
@@ -177,28 +186,50 @@ class iccd_evaluation():
             spectrum = self.ascii_grid_transposed.mean()
         elif self.readout_mode == "FRI":
             if self.single_row == True:
-                spectrum = self.ascii_grid_transposed.iloc[self.input_row]
+                spectrum = self.ascii_grid_transposed.iloc[self.single_row]
             else: 
                 spectrum = self.ascii_grid_transposed.iloc[self.mean_row_start:self.mean_row_end].mean()
         self.spectrum_list = spectrum.to_numpy()
     
     def calculate_diff_absorbance(self):
-        I = self.AD_dict.get("I")
-        I0 = self.AD_dict.get("I0")
-        D = self.AD_dict.get("D")
+        I = self.DA_dict.get("I")
+        I0 = self.DA_dict.get("I0")
+        D = self.DA_dict.get("D")
         self.diff_absorbance_list = -np.log10((I-D)/(I0-D))
-    
+        if self.stack_DA_spectra == True:
+            self.DA_spectra_dict.update({self.title:self.diff_absorbance_list})
+
     def plot_spectrum(self):
-        ### plots the generated dataframe to a spectrum with wavelengths on the x-axis from get_calibration() and saves it to the current folder ###
-        if self.mode == "DA" or self.mode == "A":
-            spectrum = self.diff_absorbance_list
-        else:
-            spectrum = self.spectrum_list
-        self.get_calibration()           
+        ### plots the generated dataframe to a spectrum with wavelengths on the x-axis from get_calibration() and saves it to the current folder ### 
+        self.get_calibration() 
         fig = plt.figure(figsize=(4,3))
         gs = gridspec.GridSpec(1,1)
-        ax1 = fig.add_subplot(gs[0])
-        ax1.plot(self.wavelengths, spectrum, linewidth=1)
+        ax1 = fig.add_subplot(gs[0]) 
+        if self.stack_DA_spectra == False:
+            if self.mode == "DA" or self.mode == "A":
+                spectrum = self.diff_absorbance_list
+            else:
+                spectrum = self.spectrum_list
+                ax1.plot(self.wavelengths, spectrum, linewidth=0.5)
+        elif self.stack_DA_spectra == True:
+            f = open("legend_labels.json")
+            label_dict = json.load(f)
+            f.close()
+            label_order_list = [*label_dict.keys()]
+            self.DA_spectra_dict = dict(sorted(self.DA_spectra_dict.items(), key=lambda pair: label_order_list.index(pair[0])))
+            colors = pl.cm.nipy_spectral(np.linspace(0,1,len(self.DA_spectra_dict)))
+            i = 0
+            for key in self.DA_spectra_dict:
+                try:
+                    f = open("legend_labels.json", encoding='utf8')
+                    label_dict = json.load(f)
+                    f.close()
+                    ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=0.5,  label=label_dict[key])
+                except:
+                    print("No label file found!")
+                    ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=0.5, label=key)
+                ax1.legend(loc="lower right", prop={'family':"serif", 'size':5.8})
+                i += 1
         #plt.title(label=self.title, pad=-262, loc="left", family="serif", fontsize=8)
         plt.xlabel("wavelength λ / nm", family="serif", fontsize=8)
         if self.mode == "DA":
@@ -246,7 +277,7 @@ class iccd_evaluation():
         else:
             fig.savefig(self.image_filename + "_spectrum", bbox_inches="tight", dpi=1000)
         plt.clf()
-    
+
     def plot_heatmap(self):
         ### plots the generated dataframe to a heatmap and saves it to the current folder ###
         plt.pcolor(self.ascii_grid_transposed)
