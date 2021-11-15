@@ -133,5 +133,6 @@ dmypy.json
 **processed_files/
 **iccd_heatmaps/
 **spectra/
+**cal_files/
 *.asc
 *.png

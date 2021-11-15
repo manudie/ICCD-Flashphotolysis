@@ -1,3 +1,4 @@
+# %%
 # -*- coding: utf-8 -*-
 """
 This script was written to evaluate 1024x1024 px images (from the Andor iStar ICCD Camera).
@@ -31,7 +32,7 @@ class iccd_evaluation():
     def __init__(self, mode):
         ### constructor that declares class variables (self.x) ###
         self.mode = mode
-        self.test_run = True            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
+        self.test_run = False            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
         self.drop_first_measurement = False             # In kinetic series w/ single track, often the first line of data is false due to build up charge in the ccd. Setting self.drop_first_measurent to True drops this line of data. Note to acquire n+1 mesaurements! 
         self.single_row = False
         self.calibration_points = 2
@@ -50,30 +51,54 @@ class iccd_evaluation():
         self.wavelenght_cal_2 = 435.8335
         self.wavelenght_cal_3 = 546.0750
         self.directory = os.getcwd()
-        self.AD_filename_list = ["_I_","_I0_","_D_"]
+        self.AD_I0D_list = ["_D_","_I0_","_I_"]
         self.AD_dict = {}
+        self.calibration_mode = False
     
     def iterate(self):
         ### main function that scans and iterates through the current directory to evaluates each .asc file after another ###
         self.make_dirs()
-        for entry in os.scandir(self.directory):
-            if entry.path.endswith(".asc") and entry.is_file():
-                self.file = entry.path
-                self.read_file()
-                if self.mode == "spectrum" or self.mode == "heatmap" or self.mode == "both":
+        if self.mode == "spectrum" or self.mode == "heatmap" or self.mode == "both":
+            for entry in os.scandir(self.directory):
+                if entry.path.endswith(".asc") and entry.is_file():
+                    self.file = entry.path
+                    self.read_file()
                     self.evaluate()
-                    self.move_files()
-                elif self.mode == "DA" or self.mode == "A":
-                    for el in self.AD_filename_list:
-                        if el in self.file:
-                            self.calculate_spectrum()
-                            self.AD_dict.update({el.replace("_",""):self.spectrum_list})
                     self.move_files()        
-        if self.mode == "DA" or self.mode == "A":
-            self.calculate_diff_absorbance()
-            self.plot_spectrum()
-            self.move_files() 
-            
+        elif self.mode == "DA" or self.mode == "A":
+            DA_file_counter = 0
+            filename_list = []
+            for entry in os.scandir(self.directory):
+                if entry.path.endswith(".asc") and entry.is_file():
+                    self.file = entry.path
+                    for el in self.AD_I0D_list:
+                        if el in self.file:
+                            experiment = self.file.replace(el,"_")
+                            for experiment_entry in os.scandir(self.directory):
+                                if experiment_entry.path.endswith(".asc") and experiment_entry.is_file():
+                                    current_experiment = experiment_entry.path.replace(self.AD_I0D_list[DA_file_counter],"_")
+                                    if current_experiment == experiment:
+                                        DA_file_counter += 1
+                                        filename_list.append(experiment_entry.path)
+                                    if DA_file_counter == 3:
+                                        break
+                        if DA_file_counter == 3:
+                            break
+                if DA_file_counter == 3:
+                    for el in filename_list:
+                        self.file = el
+                        self.read_file()
+                        self.calculate_spectrum()
+                        for el in self.AD_I0D_list:
+                            if el in self.title:
+                                self.AD_dict.update({el.replace("_",""):self.spectrum_list})
+                        self.move_files() 
+                    self.calculate_diff_absorbance()
+                    self.plot_spectrum()
+                    self.move_files() 
+                    DA_file_counter = 0
+                    filename_list = []
+       
     def evaluate(self):
         ### decides what to plot, given on the parameter ("heatmap", "spectrum", or "both") the class is called with ###
         if self.mode == "spectrum":
@@ -182,25 +207,26 @@ class iccd_evaluation():
             plt.ylabel("absorbance A", family="serif", fontsize=8)
         else:
             plt.ylabel("counts", family="serif", fontsize=8)
-        if self.calibration_fit_peaks == True and self.plot_calibration_fit == True and self.calibration_fit_mode == "gauss":
-            ax1.plot(self.wavelengths, self.gauss_peak_1, "orange")
-            ax1.fill_between(self.wavelengths, self.gauss_peak_1.min(), self.gauss_peak_1, facecolor="orange", alpha=0.2)
-            ax1.plot(self.wavelengths, self.gauss_peak_2, "orange")
-            ax1.fill_between(self.wavelengths, self.gauss_peak_2.min(), self.gauss_peak_2, facecolor="orange", alpha=0.2)  
-        elif self.calibration_fit_peaks == True and self.plot_calibration_fit == True and self.calibration_fit_mode == "lorentz":
-            '''
-            ax1.plot(self.wavelengths, self.lorentz_peak_1, "indianred")
-            ax1.fill_between(self.wavelengths, self.lorentz_peak_1.min(), self.lorentz_peak_1, facecolor="indianred", alpha=0.2)
-            '''
-            ax1.plot(self.wavelengths, self.lorentz_peak_2, "palegreen")
-            ax1.fill_between(self.wavelengths, self.lorentz_peak_2.min(), self.lorentz_peak_2, facecolor="palegreen", alpha=0.2)  
-            ax1.plot(self.wavelengths, self.lorentz_peak_3, "palegreen")           #c
-            ax1.fill_between(self.wavelengths, self.lorentz_peak_3.min(), self.lorentz_peak_3, facecolor="palegreen", alpha=0.2)           #cyan
-        elif self.calibration_fit_peaks == True and self.plot_calibration_fit == True and self.calibration_fit_mode == "voigt":    
-            ax1.plot(self.wavelengths, self.voigt_peak_2, "blueviolet")
-            ax1.fill_between(self.wavelengths, self.voigt_peak_2.min(), self.voigt_peak_2, facecolor="blueviolet", alpha=0.2)  
-            ax1.plot(self.wavelengths, self.voigt_peak_3, "blueviolet")           #c
-            ax1.fill_between(self.wavelengths, self.voigt_peak_3.min(), self.voigt_peak_3, facecolor="blueviolet", alpha=0.2)           #cyan
+        if self.calibration_mode == True:
+            if self.calibration_fit_peaks == True and self.plot_calibration_fit == True and self.calibration_fit_mode == "gauss":
+                ax1.plot(self.wavelengths, self.gauss_peak_1, "orange")
+                ax1.fill_between(self.wavelengths, self.gauss_peak_1.min(), self.gauss_peak_1, facecolor="orange", alpha=0.2)
+                ax1.plot(self.wavelengths, self.gauss_peak_2, "orange")
+                ax1.fill_between(self.wavelengths, self.gauss_peak_2.min(), self.gauss_peak_2, facecolor="orange", alpha=0.2)  
+            elif self.calibration_fit_peaks == True and self.plot_calibration_fit == True and self.calibration_fit_mode == "lorentz":
+                '''
+                ax1.plot(self.wavelengths, self.lorentz_peak_1, "indianred")
+                ax1.fill_between(self.wavelengths, self.lorentz_peak_1.min(), self.lorentz_peak_1, facecolor="indianred", alpha=0.2)
+                '''
+                ax1.plot(self.wavelengths, self.lorentz_peak_2, "palegreen")
+                ax1.fill_between(self.wavelengths, self.lorentz_peak_2.min(), self.lorentz_peak_2, facecolor="palegreen", alpha=0.2)  
+                ax1.plot(self.wavelengths, self.lorentz_peak_3, "palegreen")           #c
+                ax1.fill_between(self.wavelengths, self.lorentz_peak_3.min(), self.lorentz_peak_3, facecolor="palegreen", alpha=0.2)           #cyan
+            elif self.calibration_fit_peaks == True and self.plot_calibration_fit == True and self.calibration_fit_mode == "voigt":    
+                ax1.plot(self.wavelengths, self.voigt_peak_2, "blueviolet")
+                ax1.fill_between(self.wavelengths, self.voigt_peak_2.min(), self.voigt_peak_2, facecolor="blueviolet", alpha=0.2)  
+                ax1.plot(self.wavelengths, self.voigt_peak_3, "blueviolet")           #c
+                ax1.fill_between(self.wavelengths, self.voigt_peak_3.min(), self.voigt_peak_3, facecolor="blueviolet", alpha=0.2)           #cyan
         if self.show_calibration_marks == True:
             if self.calibration_points == 2:
                 plt.vlines([self.wavelenght_cal_2, self.wavelenght_cal_3], ymin=self.spectrum_list.min(), ymax=self.spectrum_list.max(), color="grey", linewidth=0.5)
@@ -219,7 +245,7 @@ class iccd_evaluation():
             plt.show()
         else:
             fig.savefig(self.image_filename + "_spectrum", bbox_inches="tight", dpi=1000)
-        fig.clf()
+        plt.clf()
     
     def plot_heatmap(self):
         ### plots the generated dataframe to a heatmap and saves it to the current folder ###
@@ -300,6 +326,7 @@ class iccd_evaluation():
         ### In calibrate() mode this function will search for the column numbers of three peaks in the spectrum of the calibration lamp. 
         # The peaks will be determined by their height, set by self.peak_height_min. 
         # It then uses a three-point linear fit to calculate values for the slope m and intercept b, which are stored together with the wavelenghts and depending column values in a .json file for later use. ###
+        self.calibration_mode = True
         self.get_calibration_file()
         self.read_file()
         self.calculate_spectrum()
@@ -411,7 +438,10 @@ class iccd_evaluation():
         self.plot_spectrum()
 
 if __name__ =='__main__':
-    plot1 = iccd_evaluation("spectrum")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
+    plot1 = iccd_evaluation("DA")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
                                             # You can also set the mode "DA" for calculating a difference absorbance spectrum.                
-    plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
-    #plot1.iterate()                         # start evaluating process by calling the function evaluate()
+    #plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
+    plot1.iterate()                         # start evaluating process by calling the function evaluate()
+
+# %%
+
