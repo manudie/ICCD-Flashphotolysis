@@ -32,11 +32,11 @@ class iccd_evaluation():
     
     def __init__(self, mode):
         ##### Options to set by user #####
-        self.test_run = True            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
+        self.test_run = False            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
         self.drop_first_measurement = False             # In kinetic series w/ single track, often the first line of data is false due to build up charge in the ccd. Setting self.drop_first_measurent to True drops this line of data. Note to acquire n+1 mesaurements! 
         self.layer_DA_spectra = False
         self.stack_DA_spectra = True
-        self.legend_label_file = "legend_labels_noise_32.json"
+        self.legend_label_file = "legend_labels_noise_temp_64.json"
         self.plot_title = False
         self.mean_row_start = 250
         self.mean_row_end = 550
