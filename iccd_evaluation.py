@@ -22,6 +22,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
 from scipy import optimize
+from scipy.ndimage.filters import uniform_filter1d
 from matplotlib.ticker import AutoMinorLocator
 from matplotlib import gridspec
 import matplotlib.ticker as ticker
@@ -34,11 +35,12 @@ class iccd_evaluation():
         ##### Options to set by user #####
         self.test_run = False            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
         self.drop_first_measurement = False             # In kinetic series w/ single track, often the first line of data is false due to build up charge in the ccd. Setting self.drop_first_measurent to True drops this line of data. Note to acquire n+1 mesaurements! 
+        self.MA_filter = False
         self.layer_DA_spectra = False
         self.stack_DA_spectra = True
         self.legend_label_file = "legend_labels_noise_temp_64.json"
         self.plot_title = False
-        self.mean_row_start = 250
+        self.mean_row_start = 250   
         self.mean_row_end = 550
         self.single_row_mode = False
         self.single_row = 255
@@ -50,6 +52,7 @@ class iccd_evaluation():
         self.calibration_fit_mode = "gauss"           # "gauss", "lorentz" or "voigt"
         self.plot_calibration_fit = True         
         self.show_calibration_marks = False
+        self.linewidth = 0.4 # Default: 0.4, MA: 1.0
 
         ##### Constructor that declares class variables (self.x) #####
         self.mode = mode
@@ -194,18 +197,23 @@ class iccd_evaluation():
             else: 
                 spectrum = self.ascii_grid_transposed.iloc[self.mean_row_start:self.mean_row_end].mean()
         self.spectrum_list = spectrum.to_numpy()
+        if self.MA_filter == True:
+            self.spectrum_list = uniform_filter1d(self.spectrum_list, size=5)
     
     def calculate_diff_absorbance(self):
         I = self.DA_dict.get("I")
         I0 = self.DA_dict.get("I0")
         D = self.DA_dict.get("D")
         self.diff_absorbance_list = -np.log10((I-D)/(I0-D))
+        if self.MA_filter == True:
+            self.diff_absorbance_list = uniform_filter1d(self.diff_absorbance_list, size=10)
         if self.layer_DA_spectra == True or self.stack_DA_spectra:
             self.DA_spectra_dict.update({self.title:self.diff_absorbance_list})
-
+    
     def plot_spectrum(self):
         ### plots the generated dataframe to a spectrum with wavelengths on the x-axis from get_calibration() and saves it to the current folder ### 
         self.get_calibration() 
+        y_label_drawn = False
         if self.layer_DA_spectra == False and self.stack_DA_spectra == False:
             fig = plt.figure(figsize=(4,3))
             gs = gridspec.GridSpec(1,1)
@@ -214,7 +222,7 @@ class iccd_evaluation():
                 spectrum = self.diff_absorbance_list
             else:
                 spectrum = self.spectrum_list
-            ax1.plot(self.wavelengths, spectrum, linewidth=0.4)
+            ax1.plot(self.wavelengths, spectrum, linewidth=self.linewidth, color="darkcyan")
             ax1.xaxis.set_minor_locator(AutoMinorLocator(2))
             ax1.yaxis.set_minor_locator(AutoMinorLocator(2))
         elif self.layer_DA_spectra == True or self.stack_DA_spectra == True:
@@ -239,9 +247,9 @@ class iccd_evaluation():
                 ax1.yaxis.set_minor_locator(AutoMinorLocator(2))
                 for key in self.DA_spectra_dict:
                     try:
-                        ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=0.4,  label=label_dict[key])
+                        ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=self.linewidth,  label=label_dict[key])
                     except:
-                        ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=0.4, label=key)
+                        ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=self.linewidth, label=key)
                     ax1.legend(loc="lower right", prop={'family':"serif", 'size':5.8})
                     i += 1       
             elif self.stack_DA_spectra == True:
@@ -250,7 +258,10 @@ class iccd_evaluation():
                 gs = gridspec.GridSpec(len(self.DA_spectra_dict), 1, hspace=0)
                 for key in self.DA_spectra_dict:
                     axs[i] = fig.add_subplot(gs[i]) 
-                    axs[i].plot(self.wavelengths, self.DA_spectra_dict[key], color="darkcyan", linewidth=0.4,  label=label_dict[key]) #darkcyan
+                    try:
+                        axs[i].plot(self.wavelengths, self.DA_spectra_dict[key], color="darkcyan", linewidth=self.linewidth,  label=label_dict[key])
+                    except:
+                        axs[i].plot(self.wavelengths, self.DA_spectra_dict[key], color="darkcyan", linewidth=self.linewidth,  label=key)
                     axs[i].legend(loc="lower right", prop={'family':"serif", 'size':5.8})
                     axs[i].xaxis.set_minor_locator(AutoMinorLocator(2))
                     axs[i].yaxis.set_minor_locator(AutoMinorLocator(2))
@@ -259,28 +270,28 @@ class iccd_evaluation():
                     axs[i].tick_params(axis='y',which='major', direction="in", top="on", right="on", bottom="on", length=5, labelsize=6)
                     axs[i].tick_params(axis='y',which='minor', direction="in", top="on", right="on", bottom="on", length=3, labelsize=6)
                     if i == len(self.DA_spectra_dict)//2:
-                        plt.ylabel("difference absorbance ΔA", family="serif", fontsize=8)
+                        plt.ylabel("ΔA", family="serif", fontsize=8)
                         y_label_drawn = True
                     '''
                     try:
                         axs[i] = fig.add_subplot(gs[i]) 
-                        axs[i].plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=0.4,  label=label_dict[key])
+                        axs[i].plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=self.linewidth,  label=label_dict[key])
                     except:
-                        ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=0.4, label=key)
+                        ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=self.linewidth, label=key)
                     '''
                     i += 1
         if self.plot_title == True:
             plt.title(label=self.title, pad=-262, loc="left", family="serif", fontsize=8)
-        plt.xlabel("wavelength λ / nm", family="serif", fontsize=8)
+        plt.xlabel("λ / nm", family="serif", fontsize=8)
         if y_label_drawn == False:
             plt.xticks(family="serif", fontsize=8)
             plt.yticks(family="serif", fontsize=8)
             plt.tick_params(axis='both',which='major', direction="in", top="on", right="on", bottom="on", length=5, labelsize=8)
             plt.tick_params(axis='both',which='minor', direction="in", top="on", right="on", bottom="on", length=3, labelsize=8)
             if self.mode == "DA":
-                plt.ylabel("difference absorbance ΔA", family="serif", fontsize=8)
+                plt.ylabel("ΔA", family="serif", fontsize=8)
             elif self.mode == "A":
-                plt.ylabel("absorbance A", family="serif", fontsize=8)
+                plt.ylabel("A", family="serif", fontsize=8)
             else:
                 plt.ylabel("counts", family="serif", fontsize=8)
         if self.calibration_mode == True:
