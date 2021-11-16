@@ -34,11 +34,14 @@ class iccd_evaluation():
         ##### Options to set by user #####
         self.test_run = True            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
         self.drop_first_measurement = False             # In kinetic series w/ single track, often the first line of data is false due to build up charge in the ccd. Setting self.drop_first_measurent to True drops this line of data. Note to acquire n+1 mesaurements! 
-        self.stack_DA_spectra = True
+        self.layer_DA_spectra = True
+        self.legend_label_file = "legend_labels_noise_32.json"
+        self.plot_title = False
         self.mean_row_start = 250
         self.mean_row_end = 550
         self.single_row_mode = False
         self.single_row = 255
+        self.calibration_file = "calibration_file.json"
         self.calibration_points = 2
         self.peak_height_min = 2500
         self.peak_distance = 20
@@ -99,12 +102,12 @@ class iccd_evaluation():
                                 self.DA_dict.update({el.replace("_",""):self.spectrum_list})
                         self.move_files() 
                     self.calculate_diff_absorbance()
-                    if self.stack_DA_spectra == False:
+                    if self.layer_DA_spectra == False:
                         self.plot_spectrum()
                     self.move_files() 
                     DA_file_counter = 0
                     filename_list = []
-            if self.stack_DA_spectra == True:
+            if self.layer_DA_spectra == True:
                 self.plot_spectrum()
             self.move_files() 
                   
@@ -196,7 +199,7 @@ class iccd_evaluation():
         I0 = self.DA_dict.get("I0")
         D = self.DA_dict.get("D")
         self.diff_absorbance_list = -np.log10((I-D)/(I0-D))
-        if self.stack_DA_spectra == True:
+        if self.layer_DA_spectra == True:
             self.DA_spectra_dict.update({self.title:self.diff_absorbance_list})
 
     def plot_spectrum(self):
@@ -205,14 +208,14 @@ class iccd_evaluation():
         fig = plt.figure(figsize=(4,3))
         gs = gridspec.GridSpec(1,1)
         ax1 = fig.add_subplot(gs[0]) 
-        if self.stack_DA_spectra == False:
+        if self.layer_DA_spectra == False:
             if self.mode == "DA" or self.mode == "A":
                 spectrum = self.diff_absorbance_list
             else:
                 spectrum = self.spectrum_list
             ax1.plot(self.wavelengths, spectrum, linewidth=0.4)
-        elif self.stack_DA_spectra == True:
-            f = open("legend_labels.json")
+        elif self.layer_DA_spectra == True:
+            f = open(self.legend_label_file)
             label_dict = json.load(f)
             f.close()
             label_order_list = [*label_dict.keys()]
@@ -221,7 +224,7 @@ class iccd_evaluation():
             i = 0
             for key in self.DA_spectra_dict:
                 try:
-                    f = open("legend_labels.json", encoding='utf8')
+                    f = open(self.legend_label_file, encoding='utf8')
                     label_dict = json.load(f)
                     f.close()
                     ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=0.4,  label=label_dict[key])
@@ -230,7 +233,8 @@ class iccd_evaluation():
                     ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=0.4, label=key)
                 ax1.legend(loc="lower right", prop={'family':"serif", 'size':5.8})
                 i += 1
-        #plt.title(label=self.title, pad=-262, loc="left", family="serif", fontsize=8)
+        if self.plot_title == True:
+            plt.title(label=self.title, pad=-262, loc="left", family="serif", fontsize=8)
         plt.xlabel("wavelength λ / nm", family="serif", fontsize=8)
         if self.mode == "DA":
             plt.ylabel("difference absorbance ΔA", family="serif", fontsize=8)
@@ -290,7 +294,8 @@ class iccd_evaluation():
             left=False,        # ticks along the top edge are off
             labelbottom=False, # labels along the bottom edge are off
             labelleft=False)
-        plt.title(label=self.title, pad=-262, loc="left", color="white")
+        if self.plot_title == True:
+            plt.title(label=self.title, pad=-262, loc="left", color="white")
         if self.mode == "both" and self.readout_mode == "FRI":
             plt.axhspan(self.mean_row_start, self.mean_row_end, color="red", alpha=0.3, lw=0)
         if self.test_run == True: 
@@ -315,7 +320,7 @@ class iccd_evaluation():
         # The function than maps the column numbers over the calibration funtion to calculate wavelenghts. 
         # Note, that you must use a valid and up to date calibration file to get correct wavelenght values! ###
         try:
-            f = open("calibration_file.json")
+            f = open(self.calibration_file)
             calibration_dict_in = json.load(f)
             m = calibration_dict_in.get("m")
             b = calibration_dict_in.get("b")
@@ -433,8 +438,6 @@ class iccd_evaluation():
                     self.voigt_peak_2 = self._1Voigt(self.index_list, *voigt_pars_2) + self.spectrum_list.min()
                     self.voigt_peak_3 = self._1Voigt(self.index_list, *voigt_pars_3) + self.spectrum_list.min()  
                     fit_peak_list = [voigt_pars_2[1], voigt_pars_3[1]]
-
-
         #print("Peaks found over " + str(self.peak_height_min) + " counts at columns: " + str(peaks))
         if self.calibration_fit_peaks == True:
             dict_peaks = fit_peak_list
@@ -463,7 +466,7 @@ class iccd_evaluation():
                 "m" : float(m),
                 "b" : float(b)
             }         
-        with open("calibration_file.json", "w", encoding="utf-8") as f:
+        with open(self.calibration_file, "w", encoding="utf-8") as f:
             json.dump(calibration_dict, f, ensure_ascii=False, indent=4)        
 
         self.plot_spectrum()
