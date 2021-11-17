@@ -34,18 +34,18 @@ class iccd_evaluation():
     def __init__(self, mode):
         ##### Options to set by user #####
         self.test_run = True            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
-        self.file_format_mode = "txt"           # "asc" for measurements from Andor iStar Camera or "txt" for measurements from OceanOptics Minispec which are already calibrated.
+        self.file_format_mode = "asc"           # "asc" for measurements from Andor iStar Camera or "txt" for measurements from OceanOptics Minispec which are already calibrated.
         self.drop_first_measurement = False             # In kinetic series w/ single track, often the first line of data is false due to build up charge in the ccd. Setting self.drop_first_measurent to True drops this line of data. Note to acquire n+1 mesaurements! 
         self.MA_filter = False
         self.layer_DA_spectra = False
         self.stack_DA_spectra = False
-        self.legend_label_file = "legend_labels_noise_temp_64.json"
+        self.legend_label_file = "legend_label_files/legend_labels_MD03.json"
         self.plot_title = False
-        self.mean_row_start = 250   
-        self.mean_row_end = 550
+        self.mean_row_start = 480          #250   
+        self.mean_row_end = 880            #550
         self.single_row_mode = False
         self.single_row = 255
-        self.calibration_file = "calibration_file.json"
+        self.calibration_file = "calibration_files/calibration_file.json"
         self.calibration_points = 2
         self.peak_height_min = 2500
         self.peak_distance = 20
@@ -251,6 +251,7 @@ class iccd_evaluation():
             label_order_list = [*label_dict.keys()]
             self.DA_spectra_dict = dict(sorted(self.DA_spectra_dict.items(), key=lambda pair: label_order_list.index(pair[0])))
             colors = pl.cm.turbo(np.linspace(0,1,len(self.DA_spectra_dict)))
+            two_colors = ["darkcyan","firebrick"]
             try:
                 f = open(self.legend_label_file, encoding='utf8')
                 label_dict = json.load(f)
@@ -266,7 +267,17 @@ class iccd_evaluation():
                 ax1.yaxis.set_minor_locator(AutoMinorLocator(2))
                 for key in self.DA_spectra_dict:
                     try:
-                        ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=self.linewidth,  label=label_dict[key])
+                        spectrum = self.DA_spectra_dict[key]
+                        if self.file_format_mode == "txt":
+                            trim_wl = []
+                            trim_spec = []
+                            for j, el in enumerate(self.wavelengths):
+                                if el > 385 and el < 702:
+                                    trim_wl.append(el)
+                                    trim_spec.append(spectrum[j])
+                            ax1.plot(trim_wl, trim_spec, linewidth=self.linewidth, color=two_colors[i], label=label_dict[key])
+                        elif self.file_format_mode == "asc":
+                            ax1.plot(self.wavelengths, spectrum, color=colors[i], linewidth=self.linewidth,  label=label_dict[key])
                     except:
                         ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=self.linewidth, label=key)
                     ax1.legend(loc="lower right", prop={'family':"serif", 'size':5.8})
@@ -351,9 +362,30 @@ class iccd_evaluation():
 
     def plot_heatmap(self):
         ### plots the generated dataframe to a heatmap and saves it to the current folder ###
+        params = {
+            'text.latex.preamble': ['\\usepackage{gensymb}'],
+            'image.origin': 'lower',
+            'image.interpolation': 'nearest',
+            #'image.cmap': 'gray',
+            'axes.grid': False,
+            'savefig.dpi': 1000,  # to adjust notebook inline plot size
+            'axes.labelsize': 8, # fontsize for x and y labels (was 10)
+            'axes.titlesize': 8,
+            'font.size': 8, # was 10
+            'legend.fontsize': 6, # was 10
+            'xtick.labelsize': 8,
+            'ytick.labelsize': 8,
+            'text.usetex': True,
+            #'figure.figsize': [3, 3],
+            'font.family': 'serif',
+        }
+        plt.rcParams.update(params)
         plt.pcolor(self.input_data_frame_transposed)
-        plt.colorbar(pad=0.01)
+        cb = plt.colorbar(pad=0.01)
+        cb.set_label(label="counts", fontsize=10, family="serif")
+        cb.ax.tick_params(labelsize=10)
         plt.tick_params(
+            labelsize=10,
             axis='both',          # changes apply to the x-axis
             which='both',      # both major and minor ticks are affected
             bottom=False,      # ticks along the bottom edge are off
@@ -362,9 +394,9 @@ class iccd_evaluation():
             labelbottom=False, # labels along the bottom edge are off
             labelleft=False)
         if self.plot_title == True:
-            plt.title(label=self.title, pad=-262, loc="left", color="white")
+            plt.title(label=self.title, pad=-262, loc="left", color="white", family="serif", fontsize=8)
         if self.mode == "both" and self.readout_mode == "FRI":
-            plt.axhspan(self.mean_row_start, self.mean_row_end, color="red", alpha=0.3, lw=0)
+            plt.axhspan(self.mean_row_start, self.mean_row_end, color="red", alpha=0.15, lw=0)
         if self.test_run == True: 
             plt.show()
         else:
@@ -539,7 +571,7 @@ class iccd_evaluation():
         self.plot_spectrum()
 
 if __name__ =='__main__':
-    plot1 = iccd_evaluation("DA")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
+    plot1 = iccd_evaluation("heatmap")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
                                             # You can also set the mode "DA" for calculating a difference absorbance spectrum.                
     #plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
     plot1.iterate()                         # start evaluating process by calling the function evaluate()
