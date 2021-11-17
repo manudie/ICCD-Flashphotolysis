@@ -33,11 +33,12 @@ class iccd_evaluation():
     
     def __init__(self, mode):
         ##### Options to set by user #####
-        self.test_run = False            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
+        self.test_run = True            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
+        self.file_format_mode = "txt"           # "asc" for measurements from Andor iStar Camera or "txt" for measurements from OceanOptics Minispec which are already calibrated.
         self.drop_first_measurement = False             # In kinetic series w/ single track, often the first line of data is false due to build up charge in the ccd. Setting self.drop_first_measurent to True drops this line of data. Note to acquire n+1 mesaurements! 
         self.MA_filter = False
         self.layer_DA_spectra = False
-        self.stack_DA_spectra = True
+        self.stack_DA_spectra = False
         self.legend_label_file = "legend_labels_noise_temp_64.json"
         self.plot_title = False
         self.mean_row_start = 250   
@@ -52,7 +53,7 @@ class iccd_evaluation():
         self.calibration_fit_mode = "gauss"           # "gauss", "lorentz" or "voigt"
         self.plot_calibration_fit = True         
         self.show_calibration_marks = False
-        self.linewidth = 0.4 # Default: 0.4, MA: 1.0
+        self.linewidth = 0.6 # Default: 0.4, MA: 1.0, txt: 0.6
 
         ##### Constructor that declares class variables (self.x) #####
         self.mode = mode
@@ -72,7 +73,7 @@ class iccd_evaluation():
         self.make_dirs()
         if self.mode == "spectrum" or self.mode == "heatmap" or self.mode == "both":
             for entry in os.scandir(self.directory):
-                if entry.path.endswith(".asc") and entry.is_file():
+                if entry.path.endswith("." + self.file_format_mode) and entry.is_file():
                     self.file = entry.path
                     self.read_file()
                     self.evaluate()
@@ -81,13 +82,13 @@ class iccd_evaluation():
             DA_file_counter = 0
             filename_list = []
             for entry in os.scandir(self.directory):
-                if entry.path.endswith(".asc") and entry.is_file():
+                if entry.path.endswith("." + self.file_format_mode) and entry.is_file():
                     self.file = entry.path
                     for el in self.DA_I0D_list:
                         if el in self.file:
                             experiment = self.file.replace(el,"_")
                             for experiment_entry in os.scandir(self.directory):
-                                if experiment_entry.path.endswith(".asc") and experiment_entry.is_file():
+                                if experiment_entry.path.endswith("." + self.file_format_mode) and experiment_entry.is_file():
                                     current_experiment = experiment_entry.path.replace(self.DA_I0D_list[DA_file_counter],"_")
                                     if current_experiment == experiment:
                                         DA_file_counter += 1
@@ -130,24 +131,29 @@ class iccd_evaluation():
     def read_file(self):
         ### imports the ASCII (.asc) file exportet from the Andor SOLIS software and generates a pandas dataframe from it ###
         with open(self.file) as f:
-            if "Single Track" in f.read():
-                self.readout_mode = "ST"
-                self.ascii_grid = pd.read_table(self.file, engine="python", skipfooter=29, index_col=0, header=None).dropna(axis=1, how="all")
-                self.ascii_grid = self.ascii_grid.drop([1,2,3,4],axis=0)
-                if self.drop_first_measurement == True:
-                    self.ascii_grid = self.ascii_grid.drop([1],axis=1)
-            else:
-                f.seek(0)
-                self.readout_mode = ""
-            if self.readout_mode != "ST":
-                if "Full Resolution Image" in f.read():
-                    self.readout_mode = "FRI"
-                    self.ascii_grid = pd.read_table(self.file, engine="python", skipfooter=29, index_col=0, header=None).dropna(axis=1, how="all") #usecols=[*range(1,1024)],
-                else: 
-                    print('Unsupported readout mode! Choose "Full Resolution Image" or "Single Track"')
+            if self.file_format_mode == "asc":
+                if "Single Track" in f.read():
+                    self.readout_mode = "ST"
+                    self.input_data_frame = pd.read_table(self.file, engine="python", skipfooter=29, index_col=0, header=None).dropna(axis=1, how="all")
+                    self.input_data_frame = self.input_data_frame.drop([1,2,3,4],axis=0)
+                    if self.drop_first_measurement == True:
+                        self.input_data_frame = self.input_data_frame.drop([1],axis=1)
+                else:
+                    f.seek(0)
+                    self.readout_mode = ""
+                if self.readout_mode != "ST":
+                    if "Full Resolution Image" in f.read():
+                        self.readout_mode = "FRI"
+                        self.input_data_frame = pd.read_table(self.file, engine="python", skipfooter=29, index_col=0, header=None).dropna(axis=1, how="all") #usecols=[*range(1,1024)],
+                    else: 
+                        print('Unsupported readout mode! Choose "Full Resolution Image" or "Single Track"')
+            elif self.file_format_mode == "txt":
+                self.input_data_frame = pd.read_csv(self.file, index_col=0, delimiter = "\t", decimal=",").dropna(axis=1, how="all")
+                self.wavelengths = self.input_data_frame.index.values.tolist()
             f.close()
-        #print(self.ascii_grid)
-        self.ascii_grid_transposed = self.ascii_grid.T
+        #print(self.input_data_frame)
+        self.input_data_frame_transposed = self.input_data_frame.T
+        #print(self.input_data_frame_transposed)
         self.image_filename = self.file[:len(self.file)-4]
         try:
             self.title = self.image_filename.rsplit("/",1)[1]
@@ -189,13 +195,16 @@ class iccd_evaluation():
     def calculate_spectrum(self):
         ### calculates the mean of the data to a spectrum, based on the readout mode the data was aquired. 
         # Supported readout modes: "Full Resolution Image" ("FRI") or "Single Track" ("ST") ###
-        if self.readout_mode == "ST":
-            spectrum = self.ascii_grid_transposed.mean()
-        elif self.readout_mode == "FRI":
-            if self.single_row == True:
-                spectrum = self.ascii_grid_transposed.iloc[self.single_row]
-            else: 
-                spectrum = self.ascii_grid_transposed.iloc[self.mean_row_start:self.mean_row_end].mean()
+        if self.file_format_mode == "asc":
+            if self.readout_mode == "ST":
+                spectrum = self.input_data_frame_transposed.mean()
+            elif self.readout_mode == "FRI":
+                if self.single_row == True:
+                    spectrum = self.input_data_frame_transposed.iloc[self.single_row]
+                else: 
+                    spectrum = self.input_data_frame_transposed.iloc[self.mean_row_start:self.mean_row_end].mean()
+        elif self.file_format_mode == "txt":
+                spectrum = self.input_data_frame.mean(axis=1, numeric_only=True)
         self.spectrum_list = spectrum.to_numpy()
         if self.MA_filter == True:
             self.spectrum_list = uniform_filter1d(self.spectrum_list, size=5)
@@ -212,7 +221,8 @@ class iccd_evaluation():
     
     def plot_spectrum(self):
         ### plots the generated dataframe to a spectrum with wavelengths on the x-axis from get_calibration() and saves it to the current folder ### 
-        self.get_calibration() 
+        if self.file_format_mode == "asc":
+            self.get_calibration() 
         y_label_drawn = False
         if self.layer_DA_spectra == False and self.stack_DA_spectra == False:
             fig = plt.figure(figsize=(4,3))
@@ -222,7 +232,16 @@ class iccd_evaluation():
                 spectrum = self.diff_absorbance_list
             else:
                 spectrum = self.spectrum_list
-            ax1.plot(self.wavelengths, spectrum, linewidth=self.linewidth, color="darkcyan")
+            if self.file_format_mode == "asc":
+                ax1.plot(self.wavelengths, spectrum, linewidth=self.linewidth, color="darkcyan")
+            elif self.file_format_mode == "txt":
+                trim_wl = []
+                trim_spec = []
+                for i, el in enumerate(self.wavelengths):
+                    if el > 385 and el < 702:
+                        trim_wl.append(el)
+                        trim_spec.append(spectrum[i])
+                ax1.plot(trim_wl, trim_spec, linewidth=self.linewidth, color="darkcyan")
             ax1.xaxis.set_minor_locator(AutoMinorLocator(2))
             ax1.yaxis.set_minor_locator(AutoMinorLocator(2))
         elif self.layer_DA_spectra == True or self.stack_DA_spectra == True:
@@ -332,7 +351,7 @@ class iccd_evaluation():
 
     def plot_heatmap(self):
         ### plots the generated dataframe to a heatmap and saves it to the current folder ###
-        plt.pcolor(self.ascii_grid_transposed)
+        plt.pcolor(self.input_data_frame_transposed)
         plt.colorbar(pad=0.01)
         plt.tick_params(
             axis='both',          # changes apply to the x-axis
@@ -377,7 +396,7 @@ class iccd_evaluation():
             print("No calibration file found! Spectrum will be generated with false values!")
             m = 0.3033110988290711   
             b = 386.25945492645576   
-        self.index_list = np.arange(1,len(self.ascii_grid_transposed.columns)+1)
+        self.index_list = np.arange(1,len(self.input_data_frame_transposed.columns)+1)
         self.wavelengths = list(map(lambda x: m*x+b, self.index_list))
         #print(len(self.wavelengths))
         #print(self.wavelengths.index(532.4293391415051)+4)
@@ -421,7 +440,7 @@ class iccd_evaluation():
             #print(peaks)
             
             if self.calibration_fit_peaks == True:
-                self.index_list = np.arange(1,len(self.ascii_grid_transposed.columns)+1) 
+                self.index_list = np.arange(1,len(self.input_data_frame_transposed.columns)+1) 
                 if self.calibration_fit_mode == "gauss":
                     ########## gauss ##########
                     gauss_amp1 = 100

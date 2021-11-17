@@ -135,4 +135,5 @@ dmypy.json
 **spectra/
 **cal_files/
 *.asc
+*.txt
 *.png
