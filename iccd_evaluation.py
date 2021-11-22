@@ -37,9 +37,9 @@ class iccd_evaluation():
         self.file_format_mode = "asc"           # "asc" for measurements from Andor iStar Camera or "txt" for measurements from OceanOptics Minispec which are already calibrated.
         self.drop_first_measurement = False             # In kinetic series w/ single track, often the first line of data is false due to build up charge in the ccd. Setting self.drop_first_measurent to True drops this line of data. Note to acquire n+1 mesaurements! 
         self.MA_filter = False
-        self.layer_DA_spectra = False
+        self.layer_DA_spectra = True
         self.stack_DA_spectra = False
-        self.legend_label_file = "legend_label_files/legend_labels_MD03.json"
+        self.legend_label_file = "legend_label_files/legend_labels_OD1.json"
         self.plot_title = False
         self.mean_row_start = 480          #250   
         self.mean_row_end = 880            #550
@@ -53,7 +53,7 @@ class iccd_evaluation():
         self.calibration_fit_mode = "gauss"           # "gauss", "lorentz" or "voigt"
         self.plot_calibration_fit = True         
         self.show_calibration_marks = False
-        self.linewidth = 0.6 # Default: 0.4, MA: 1.0, txt: 0.6
+        self.linewidth = 0.4 # Default: 0.6, MA: 1.0, txt: 0.6
 
         ##### Constructor that declares class variables (self.x) #####
         self.mode = mode
@@ -221,6 +221,24 @@ class iccd_evaluation():
     
     def plot_spectrum(self):
         ### plots the generated dataframe to a spectrum with wavelengths on the x-axis from get_calibration() and saves it to the current folder ### 
+        params = {
+            'text.latex.preamble': ['\\usepackage{gensymb}'],
+            'image.origin': 'lower',
+            'image.interpolation': 'nearest',
+            #'image.cmap': 'gray',
+            'axes.grid': False,
+            'savefig.dpi': 1000,  # to adjust notebook inline plot size
+            'axes.labelsize': 11, 
+            'axes.titlesize': 11,
+            'font.size': 11, 
+            'legend.fontsize': 6, 
+            'xtick.labelsize': 11,
+            'ytick.labelsize': 11,
+            'text.usetex': True,
+            #'figure.figsize': [3, 3],
+            'font.family': 'serif',
+        }
+        plt.rcParams.update(params)        
         if self.file_format_mode == "asc":
             self.get_calibration() 
         y_label_drawn = False
@@ -244,6 +262,8 @@ class iccd_evaluation():
                 ax1.plot(trim_wl, trim_spec, linewidth=self.linewidth, color="darkcyan")
             ax1.xaxis.set_minor_locator(AutoMinorLocator(2))
             ax1.yaxis.set_minor_locator(AutoMinorLocator(2))
+            ax1.xaxis.set_major_locator(ticker.MultipleLocator(50))
+            #ax1.yaxis.set_major_locator(ticker.MultipleLocator(50))
         elif self.layer_DA_spectra == True or self.stack_DA_spectra == True:
             f = open(self.legend_label_file)
             label_dict = json.load(f)
@@ -265,6 +285,7 @@ class iccd_evaluation():
                 ax1 = fig.add_subplot(gs[0]) 
                 ax1.xaxis.set_minor_locator(AutoMinorLocator(2))
                 ax1.yaxis.set_minor_locator(AutoMinorLocator(2))
+                ax1.xaxis.set_major_locator(ticker.MultipleLocator(50))
                 for key in self.DA_spectra_dict:
                     try:
                         spectrum = self.DA_spectra_dict[key]
@@ -278,6 +299,7 @@ class iccd_evaluation():
                             ax1.plot(trim_wl, trim_spec, linewidth=self.linewidth, color=two_colors[i], label=label_dict[key])
                         elif self.file_format_mode == "asc":
                             ax1.plot(self.wavelengths, spectrum, color=colors[i], linewidth=self.linewidth,  label=label_dict[key])
+                            #ax1.set_ylim([-0.035, 0.025])
                     except:
                         ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=self.linewidth, label=key)
                     ax1.legend(loc="lower right", prop={'family':"serif", 'size':5.8})
@@ -295,6 +317,7 @@ class iccd_evaluation():
                     axs[i].legend(loc="lower right", prop={'family':"serif", 'size':5.8})
                     axs[i].xaxis.set_minor_locator(AutoMinorLocator(2))
                     axs[i].yaxis.set_minor_locator(AutoMinorLocator(2))
+                    axs[i].xaxis.set_major_locator(ticker.MultipleLocator(50))
                     axs[i].tick_params(axis='x',which='major', direction="in", top="on", right="on", bottom="on", length=5, labelsize=8)
                     axs[i].tick_params(axis='x',which='minor', direction="in", top="on", right="on", bottom="on", length=3, labelsize=8)
                     axs[i].tick_params(axis='y',which='major', direction="in", top="on", right="on", bottom="on", length=5, labelsize=6)
@@ -311,19 +334,19 @@ class iccd_evaluation():
                     '''
                     i += 1
         if self.plot_title == True:
-            plt.title(label=self.title, pad=-262, loc="left", family="serif", fontsize=8)
-        plt.xlabel("λ / nm", family="serif", fontsize=8)
+            plt.title(label=self.title, pad=-262, loc="left", family="serif")#, fontsize=8)
+        plt.xlabel("$\lambda$ / nm", family="serif")#, fontsize=8)
         if y_label_drawn == False:
-            plt.xticks(family="serif", fontsize=8)
-            plt.yticks(family="serif", fontsize=8)
-            plt.tick_params(axis='both',which='major', direction="in", top="on", right="on", bottom="on", length=5, labelsize=8)
-            plt.tick_params(axis='both',which='minor', direction="in", top="on", right="on", bottom="on", length=3, labelsize=8)
+            #plt.xticks(family="serif", fontsize=8)
+            #plt.yticks(family="serif", fontsize=8)
+            plt.tick_params(axis='both',which='major', direction="in", top="on", right="on", bottom="on", length=5)#, labelsize=8)
+            plt.tick_params(axis='both',which='minor', direction="in", top="on", right="on", bottom="on", length=3)#, labelsize=8)
             if self.mode == "DA":
-                plt.ylabel("ΔA", family="serif", fontsize=8)
+                plt.ylabel("$\Delta $A")#, family="serif", fontsize=8)
             elif self.mode == "A":
-                plt.ylabel("A", family="serif", fontsize=8)
+                plt.ylabel("$A$")#, family="serif", fontsize=8)
             else:
-                plt.ylabel("counts", family="serif", fontsize=8)
+                plt.ylabel("counts", family="serif")#, fontsize=8)
         if self.calibration_mode == True:
             if self.calibration_fit_peaks == True and self.plot_calibration_fit == True and self.calibration_fit_mode == "gauss":
                 ax1.plot(self.wavelengths, self.gauss_peak_1, "orange")
@@ -346,13 +369,12 @@ class iccd_evaluation():
                 ax1.fill_between(self.wavelengths, self.voigt_peak_3.min(), self.voigt_peak_3, facecolor="blueviolet", alpha=0.2)           #cyan
             ax1.xaxis.set_minor_locator(AutoMinorLocator(2))
             ax1.yaxis.set_minor_locator(AutoMinorLocator(2))
+            ax1.xaxis.set_major_locator(ticker.MultipleLocator(50))
         if self.show_calibration_marks == True:
             if self.calibration_points == 2:
                 plt.vlines([self.wavelenght_cal_2, self.wavelenght_cal_3], ymin=self.spectrum_list.min(), ymax=self.spectrum_list.max(), color="grey", linewidth=0.5)
             elif self.calibration_points == 3:
                 plt.vlines([self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3], ymin=self.spectrum_list.min(), ymax=self.spectrum_list.max(), color="grey", linewidth=0.5)
-        #ax1.xaxis.set_major_locator(ticker.MultipleLocator(50))
-        #ax1.yaxis.set_major_locator(ticker.MultipleLocator(50))
         fig.tight_layout()
         if self.test_run == True: 
             plt.show()
@@ -369,12 +391,12 @@ class iccd_evaluation():
             #'image.cmap': 'gray',
             'axes.grid': False,
             'savefig.dpi': 1000,  # to adjust notebook inline plot size
-            'axes.labelsize': 8, # fontsize for x and y labels (was 10)
-            'axes.titlesize': 8,
-            'font.size': 8, # was 10
-            'legend.fontsize': 6, # was 10
-            'xtick.labelsize': 8,
-            'ytick.labelsize': 8,
+            'axes.labelsize': 9, 
+            'axes.titlesize': 9,
+            'font.size': 9, 
+            'legend.fontsize': 6, 
+            'xtick.labelsize': 9,
+            'ytick.labelsize': 9,
             'text.usetex': True,
             #'figure.figsize': [3, 3],
             'font.family': 'serif',
@@ -382,10 +404,10 @@ class iccd_evaluation():
         plt.rcParams.update(params)
         plt.pcolor(self.input_data_frame_transposed)
         cb = plt.colorbar(pad=0.01)
-        cb.set_label(label="counts", fontsize=10, family="serif")
-        cb.ax.tick_params(labelsize=10)
+        cb.set_label(label="counts")
+        #cb.ax.tick_params(labelsize=10)
         plt.tick_params(
-            labelsize=10,
+            #labelsize=10,
             axis='both',          # changes apply to the x-axis
             which='both',      # both major and minor ticks are affected
             bottom=False,      # ticks along the bottom edge are off
@@ -571,7 +593,7 @@ class iccd_evaluation():
         self.plot_spectrum()
 
 if __name__ =='__main__':
-    plot1 = iccd_evaluation("heatmap")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
+    plot1 = iccd_evaluation("DA")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
                                             # You can also set the mode "DA" for calculating a difference absorbance spectrum.                
     #plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
     plot1.iterate()                         # start evaluating process by calling the function evaluate()
