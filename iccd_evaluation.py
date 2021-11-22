@@ -33,7 +33,7 @@ class iccd_evaluation():
     
     def __init__(self, mode):
         ##### Options to set by user #####
-        self.test_run = True            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
+        self.test_run = False            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
         self.file_format_mode = "asc"           # "asc" for measurements from Andor iStar Camera or "txt" for measurements from OceanOptics Minispec which are already calibrated.
         self.drop_first_measurement = False             # In kinetic series w/ single track, often the first line of data is false due to build up charge in the ccd. Setting self.drop_first_measurent to True drops this line of data. Note to acquire n+1 mesaurements! 
         self.MA_filter = False
@@ -298,11 +298,14 @@ class iccd_evaluation():
                                     trim_spec.append(spectrum[j])
                             ax1.plot(trim_wl, trim_spec, linewidth=self.linewidth, color=two_colors[i], label=label_dict[key])
                         elif self.file_format_mode == "asc":
-                            ax1.plot(self.wavelengths, spectrum, color=colors[i], linewidth=self.linewidth,  label=label_dict[key])
-                            #ax1.set_ylim([-0.035, 0.025])
+                            if len(self.DA_spectra_dict) > 1:        
+                                ax1.plot(self.wavelengths, spectrum, color=colors[i], linewidth=self.linewidth,  label=label_dict[key])
+                            else:
+                                ax1.plot(self.wavelengths, spectrum, color="darkcyan", linewidth=self.linewidth,  label=label_dict[key])
                     except:
                         ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=self.linewidth, label=key)
                     ax1.legend(loc="lower right", prop={'family':"serif", 'size':5.8})
+                    #ax1.set_ylim([-0.035, 0.025])
                     i += 1       
             elif self.stack_DA_spectra == True:
                 fig, axs = plt.subplots(len(self.DA_spectra_dict), sharex=True, sharey=True, figsize=(3,7))
