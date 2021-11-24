@@ -37,23 +37,24 @@ class iccd_evaluation():
         self.file_format_mode = "asc"           # "asc" for measurements from Andor iStar Camera or "txt" for measurements from OceanOptics Minispec which are already calibrated.
         self.drop_first_measurement = False             # In kinetic series w/ single track, often the first line of data is false due to build up charge in the ccd. Setting self.drop_first_measurent to True drops this line of data. Note to acquire n+1 mesaurements! 
         self.MA_filter = False
-        self.layer_DA_spectra = True
+        self.layer_DA_spectra = False
         self.stack_DA_spectra = False
-        self.legend_label_file = "legend_label_files/legend_labels_OD1.json"
+        self.legend_label_file = "legend_label_files/legend_labels_noise_temp_64.json"
         self.plot_title = False
-        self.mean_row_start = 480          #250   
-        self.mean_row_end = 880            #550
+        self.mean_row_start = 570          #670             #740           #480          #250   
+        self.mean_row_end = 790            #690             #760           #880          #550
         self.single_row_mode = False
         self.single_row = 255
-        self.calibration_file = "calibration_files/calibration_file.json"
-        self.calibration_points = 2
+        self.calibration_file = "calibration_files/calibration_file_old.json"
+        self.calibration_points = 3
         self.peak_height_min = 2500
         self.peak_distance = 20
-        self.calibration_fit_peaks = True
+        self.calibration_fit_peaks = False
         self.calibration_fit_mode = "gauss"           # "gauss", "lorentz" or "voigt"
-        self.plot_calibration_fit = True         
+        self.plot_calibration_fit = False         
         self.show_calibration_marks = False
-        self.linewidth = 0.4 # Default: 0.6, MA: 1.0, txt: 0.6
+        self.show_mean_area_heatmap = True
+        self.linewidth = 0.6 # Default: 0.6, MA: 1.0, txt: 0.6
 
         ##### Constructor that declares class variables (self.x) #####
         self.mode = mode
@@ -222,21 +223,21 @@ class iccd_evaluation():
     def plot_spectrum(self):
         ### plots the generated dataframe to a spectrum with wavelengths on the x-axis from get_calibration() and saves it to the current folder ### 
         params = {
-            'text.latex.preamble': ['\\usepackage{gensymb}'],
-            'image.origin': 'lower',
-            'image.interpolation': 'nearest',
-            #'image.cmap': 'gray',
-            'axes.grid': False,
-            'savefig.dpi': 1000,  # to adjust notebook inline plot size
-            'axes.labelsize': 11, 
-            'axes.titlesize': 11,
-            'font.size': 11, 
-            'legend.fontsize': 6, 
-            'xtick.labelsize': 11,
-            'ytick.labelsize': 11,
-            'text.usetex': True,
-            #'figure.figsize': [3, 3],
-            'font.family': 'serif',
+            "text.latex.preamble": "\\usepackage{gensymb}",
+            "image.origin": "lower",
+            "image.interpolation": "nearest",
+            #"image.cmap": "gray",
+            "axes.grid": False,
+            "savefig.dpi": 1000,  # to adjust notebook inline plot size
+            "axes.labelsize": 11, 
+            "axes.titlesize": 11,
+            "font.size": 11, 
+            "legend.fontsize": 6, 
+            "xtick.labelsize": 11,
+            "ytick.labelsize": 11,
+            "text.usetex": True,
+            #"figure.figsize": [3, 3],
+            "font.family": "serif",
         }
         plt.rcParams.update(params)        
         if self.file_format_mode == "asc":
@@ -265,19 +266,16 @@ class iccd_evaluation():
             ax1.xaxis.set_major_locator(ticker.MultipleLocator(50))
             #ax1.yaxis.set_major_locator(ticker.MultipleLocator(50))
         elif self.layer_DA_spectra == True or self.stack_DA_spectra == True:
-            f = open(self.legend_label_file)
-            label_dict = json.load(f)
-            f.close()
-            label_order_list = [*label_dict.keys()]
-            self.DA_spectra_dict = dict(sorted(self.DA_spectra_dict.items(), key=lambda pair: label_order_list.index(pair[0])))
-            colors = pl.cm.turbo(np.linspace(0,1,len(self.DA_spectra_dict)))
-            two_colors = ["darkcyan","firebrick"]
             try:
                 f = open(self.legend_label_file, encoding='utf8')
                 label_dict = json.load(f)
-                f.close()  
+                f.close()
+                label_order_list = [*label_dict.keys()]
+                self.DA_spectra_dict = dict(sorted(self.DA_spectra_dict.items(), key=lambda pair: label_order_list.index(pair[0])))
             except:
-                print("No label file found!")             
+                print(f"Legend label file {self.legend_label_file} not found. Plotting without legend")            
+            colors = pl.cm.turbo(np.linspace(0,1,len(self.DA_spectra_dict)))
+            two_colors = ["darkcyan","firebrick"]         
             i = 0
             if self.layer_DA_spectra == True:
                 fig = plt.figure(figsize=(4,3))
@@ -302,9 +300,9 @@ class iccd_evaluation():
                                 ax1.plot(self.wavelengths, spectrum, color=colors[i], linewidth=self.linewidth,  label=label_dict[key])
                             else:
                                 ax1.plot(self.wavelengths, spectrum, color="darkcyan", linewidth=self.linewidth,  label=label_dict[key])
+                        ax1.legend(loc="lower right", prop={'family':"serif", 'size':5.8})
                     except:
-                        ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=self.linewidth, label=key)
-                    ax1.legend(loc="lower right", prop={'family':"serif", 'size':5.8})
+                        ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=self.linewidth)
                     #ax1.set_ylim([-0.035, 0.025])
                     i += 1       
             elif self.stack_DA_spectra == True:
@@ -315,9 +313,9 @@ class iccd_evaluation():
                     axs[i] = fig.add_subplot(gs[i]) 
                     try:
                         axs[i].plot(self.wavelengths, self.DA_spectra_dict[key], color="darkcyan", linewidth=self.linewidth,  label=label_dict[key])
+                        axs[i].legend(loc="lower right", prop={'family':"serif", 'size':5.8})
                     except:
-                        axs[i].plot(self.wavelengths, self.DA_spectra_dict[key], color="darkcyan", linewidth=self.linewidth,  label=key)
-                    axs[i].legend(loc="lower right", prop={'family':"serif", 'size':5.8})
+                        axs[i].plot(self.wavelengths, self.DA_spectra_dict[key], color="darkcyan", linewidth=self.linewidth)
                     axs[i].xaxis.set_minor_locator(AutoMinorLocator(2))
                     axs[i].yaxis.set_minor_locator(AutoMinorLocator(2))
                     axs[i].xaxis.set_major_locator(ticker.MultipleLocator(50))
@@ -326,19 +324,12 @@ class iccd_evaluation():
                     axs[i].tick_params(axis='y',which='major', direction="in", top="on", right="on", bottom="on", length=5, labelsize=6)
                     axs[i].tick_params(axis='y',which='minor', direction="in", top="on", right="on", bottom="on", length=3, labelsize=6)
                     if i == len(self.DA_spectra_dict)//2:
-                        plt.ylabel("ΔA", family="serif", fontsize=8)
+                        plt.ylabel("$\Delta $A")#, family="serif")#, fontsize=8)
                         y_label_drawn = True
-                    '''
-                    try:
-                        axs[i] = fig.add_subplot(gs[i]) 
-                        axs[i].plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=self.linewidth,  label=label_dict[key])
-                    except:
-                        ax1.plot(self.wavelengths, self.DA_spectra_dict[key], color=colors[i], linewidth=self.linewidth, label=key)
-                    '''
                     i += 1
         if self.plot_title == True:
-            plt.title(label=self.title, pad=-262, loc="left", family="serif")#, fontsize=8)
-        plt.xlabel("$\lambda$ / nm", family="serif")#, fontsize=8)
+            plt.title(label=self.title, pad=-262, loc="left")#, family="serif")#, fontsize=8)
+        plt.xlabel("$\lambda$ / nm")#, family="serif")#, fontsize=8)
         if y_label_drawn == False:
             #plt.xticks(family="serif", fontsize=8)
             #plt.yticks(family="serif", fontsize=8)
@@ -349,13 +340,13 @@ class iccd_evaluation():
             elif self.mode == "A":
                 plt.ylabel("$A$")#, family="serif", fontsize=8)
             else:
-                plt.ylabel("counts", family="serif")#, fontsize=8)
+                plt.ylabel("counts")#, family="serif")#, fontsize=8)
         if self.calibration_mode == True:
             if self.calibration_fit_peaks == True and self.plot_calibration_fit == True and self.calibration_fit_mode == "gauss":
-                ax1.plot(self.wavelengths, self.gauss_peak_1, "orange")
-                ax1.fill_between(self.wavelengths, self.gauss_peak_1.min(), self.gauss_peak_1, facecolor="orange", alpha=0.2)
-                ax1.plot(self.wavelengths, self.gauss_peak_2, "orange")
-                ax1.fill_between(self.wavelengths, self.gauss_peak_2.min(), self.gauss_peak_2, facecolor="orange", alpha=0.2)  
+                ax1.plot(self.wavelengths, self.gauss_peak_1, "firebrick", linewidth=self.linewidth)
+                ax1.fill_between(self.wavelengths, self.gauss_peak_1.min(), self.gauss_peak_1, facecolor="firebrick", linewidth=self.linewidth, alpha=0.1)
+                ax1.plot(self.wavelengths, self.gauss_peak_2, "firebrick", linewidth=self.linewidth)
+                ax1.fill_between(self.wavelengths, self.gauss_peak_2.min(), self.gauss_peak_2, facecolor="firebrick", linewidth=self.linewidth, alpha=0.1)  
             elif self.calibration_fit_peaks == True and self.plot_calibration_fit == True and self.calibration_fit_mode == "lorentz":
                 '''
                 ax1.plot(self.wavelengths, self.lorentz_peak_1, "indianred")
@@ -374,10 +365,14 @@ class iccd_evaluation():
             ax1.yaxis.set_minor_locator(AutoMinorLocator(2))
             ax1.xaxis.set_major_locator(ticker.MultipleLocator(50))
         if self.show_calibration_marks == True:
+            if self.calibration_fit_peaks == True:
+                max_cal_mark = self.gauss_peak_1.max()
+            else:
+                max_cal_mark = self.spectrum_list.max()
             if self.calibration_points == 2:
-                plt.vlines([self.wavelenght_cal_2, self.wavelenght_cal_3], ymin=self.spectrum_list.min(), ymax=self.spectrum_list.max(), color="grey", linewidth=0.5)
+                plt.vlines([self.wavelenght_cal_2, self.wavelenght_cal_3], ymin=self.spectrum_list.min(), ymax=max_cal_mark, color="grey", linewidth=0.6)
             elif self.calibration_points == 3:
-                plt.vlines([self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3], ymin=self.spectrum_list.min(), ymax=self.spectrum_list.max(), color="grey", linewidth=0.5)
+                plt.vlines([self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3], ymin=self.spectrum_list.min(), ymax=max_cal_mark, color="grey", linewidth=0.6)
         fig.tight_layout()
         if self.test_run == True: 
             plt.show()
@@ -388,21 +383,21 @@ class iccd_evaluation():
     def plot_heatmap(self):
         ### plots the generated dataframe to a heatmap and saves it to the current folder ###
         params = {
-            'text.latex.preamble': ['\\usepackage{gensymb}'],
-            'image.origin': 'lower',
-            'image.interpolation': 'nearest',
-            #'image.cmap': 'gray',
-            'axes.grid': False,
-            'savefig.dpi': 1000,  # to adjust notebook inline plot size
-            'axes.labelsize': 9, 
-            'axes.titlesize': 9,
-            'font.size': 9, 
-            'legend.fontsize': 6, 
-            'xtick.labelsize': 9,
-            'ytick.labelsize': 9,
-            'text.usetex': True,
-            #'figure.figsize': [3, 3],
-            'font.family': 'serif',
+            "text.latex.preamble": "\\usepackage{gensymb}",
+            "image.origin": "lower",
+            "image.interpolation": "nearest",
+            #"image.cmap": "gray",
+            "axes.grid": False,
+            "savefig.dpi": 1000,  # to adjust notebook inline plot size
+            "axes.labelsize": 9, 
+            "axes.titlesize": 9,
+            "font.size": 9, 
+            "legend.fontsize": 6, 
+            "xtick.labelsize": 9,
+            "ytick.labelsize": 9,
+            "text.usetex": True,
+            #"figure.figsize": [3, 3],
+            "font.family": "serif",
         }
         plt.rcParams.update(params)
         plt.pcolor(self.input_data_frame_transposed)
@@ -420,7 +415,7 @@ class iccd_evaluation():
             labelleft=False)
         if self.plot_title == True:
             plt.title(label=self.title, pad=-262, loc="left", color="white", family="serif", fontsize=8)
-        if self.mode == "both" and self.readout_mode == "FRI":
+        if self.mode == "both" and self.readout_mode == "FRI" and self.show_mean_area_heatmap == True:
             plt.axhspan(self.mean_row_start, self.mean_row_end, color="red", alpha=0.15, lw=0)
         if self.test_run == True: 
             plt.show()
@@ -491,7 +486,7 @@ class iccd_evaluation():
         self.read_file()
         self.calculate_spectrum()
         peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance)[0]
-        #print(peaks)
+        print(peaks)
         if peaks.size > 3:
             peaks = find_peaks(self.spectrum_list, height=self.peak_height_min, distance=self.peak_distance, width=40)[0]
             #print(peaks)
@@ -563,14 +558,15 @@ class iccd_evaluation():
                     self.voigt_peak_3 = self._1Voigt(self.index_list, *voigt_pars_3) + self.spectrum_list.min()  
                     fit_peak_list = [voigt_pars_2[1], voigt_pars_3[1]]
         #print("Peaks found over " + str(self.peak_height_min) + " counts at columns: " + str(peaks))
-        if self.calibration_fit_peaks == True:
-            dict_peaks = fit_peak_list
-        else:
-            dict_peaks = peaks                
         wavelenght_cal_list_2 = [self.wavelenght_cal_2, self.wavelenght_cal_3]
         wavelenght_cal_list_3 = [self.wavelenght_cal_1, self.wavelenght_cal_2, self.wavelenght_cal_3]
-        #m,b = np.polyfit(peaks,wavelenght_cal_list_3,1)
-        m,b = np.polyfit(fit_peak_list,wavelenght_cal_list_2,1)
+        if self.calibration_fit_peaks == True:
+            dict_peaks = fit_peak_list
+            m,b = np.polyfit(fit_peak_list,wavelenght_cal_list_2,1)
+
+        else:
+            dict_peaks = peaks       
+            m,b = np.polyfit(peaks,wavelenght_cal_list_3,1)         
         if self.calibration_points == 2:
             calibration_dict = {
             "wavelenghts (y):": "columns (x):",
@@ -596,7 +592,7 @@ class iccd_evaluation():
         self.plot_spectrum()
 
 if __name__ =='__main__':
-    plot1 = iccd_evaluation("DA")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
+    plot1 = iccd_evaluation("both")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
                                             # You can also set the mode "DA" for calculating a difference absorbance spectrum.                
     #plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
     plot1.iterate()                         # start evaluating process by calling the function evaluate()
