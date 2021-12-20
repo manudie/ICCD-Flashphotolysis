@@ -39,7 +39,7 @@ class iccd_evaluation():
         self.MA_filter = False
         self.layer_DA_spectra = False
         self.stack_DA_spectra = False
-        self.legend_label_file = "legend_label_files/legend_labels_noise_temp_64.json"
+        self.legend_label_file = "legend_label_files/legend_labels_OD1.json"
         self.plot_title = False
         self.mean_row_start = 570          #670             #740           #480          #250   
         self.mean_row_end = 790            #690             #760           #880          #550
@@ -150,7 +150,7 @@ class iccd_evaluation():
                         print('Unsupported readout mode! Choose "Full Resolution Image" or "Single Track"')
             elif self.file_format_mode == "txt":
                 self.input_data_frame = pd.read_csv(self.file, index_col=0, delimiter = "\t", decimal=",").dropna(axis=1, how="all")
-                self.wavelengths = self.input_data_frame.index.values.tolist()
+                self.wavelengths = self.input_data_frame.index.values.astype(dtype="float32").tolist()
             f.close()
         #print(self.input_data_frame)
         self.input_data_frame_transposed = self.input_data_frame.T
@@ -204,9 +204,13 @@ class iccd_evaluation():
                     spectrum = self.input_data_frame_transposed.iloc[self.single_row]
                 else: 
                     spectrum = self.input_data_frame_transposed.iloc[self.mean_row_start:self.mean_row_end].mean()
+            self.spectrum_list = spectrum.to_numpy()
         elif self.file_format_mode == "txt":
+            if len(self.input_data_frame.columns) == 1:
+                 self.spectrum_list = self.input_data_frame.iloc[:,[0]].values.astype(dtype="float32").tolist()
+            else:
                 spectrum = self.input_data_frame.mean(axis=1, numeric_only=True)
-        self.spectrum_list = spectrum.to_numpy()
+                self.spectrum_list = spectrum.to_numpy()                 
         if self.MA_filter == True:
             self.spectrum_list = uniform_filter1d(self.spectrum_list, size=5)
     
@@ -252,6 +256,8 @@ class iccd_evaluation():
             else:
                 spectrum = self.spectrum_list
             if self.file_format_mode == "asc":
+                #print(min(self.wavelengths))
+                #print(max(self.wavelengths))
                 ax1.plot(self.wavelengths, spectrum, linewidth=self.linewidth, color="darkcyan")
             elif self.file_format_mode == "txt":
                 trim_wl = []
@@ -260,7 +266,7 @@ class iccd_evaluation():
                     if el > 385 and el < 702:
                         trim_wl.append(el)
                         trim_spec.append(spectrum[i])
-                ax1.plot(trim_wl, trim_spec, linewidth=self.linewidth, color="darkcyan")
+                ax1.plot(trim_wl, trim_spec, linewidth=self.linewidth, color="firebrick")
             ax1.xaxis.set_minor_locator(AutoMinorLocator(2))
             ax1.yaxis.set_minor_locator(AutoMinorLocator(2))
             ax1.xaxis.set_major_locator(ticker.MultipleLocator(50))
@@ -592,7 +598,7 @@ class iccd_evaluation():
         self.plot_spectrum()
 
 if __name__ =='__main__':
-    plot1 = iccd_evaluation("both")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
+    plot1 = iccd_evaluation("spectrum")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
                                             # You can also set the mode "DA" for calculating a difference absorbance spectrum.                
     #plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
     plot1.iterate()                         # start evaluating process by calling the function evaluate()
