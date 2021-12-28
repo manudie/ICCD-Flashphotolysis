@@ -1,4 +1,4 @@
-# ICCD-Blitzlichtphotolyse
+# ICCD-Flashphotolysis
 
 This script was written to evaluate 1024x1024 px images (from the Andor iStar ICCD Camera).
 It allows the user to generate a heatmap and/or a spectrum images from a specified area of lines in the exported sensor data.
