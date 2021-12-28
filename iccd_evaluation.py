@@ -53,7 +53,7 @@ class iccd_evaluation():
         self.calibration_fit_mode = "gauss"           # "gauss", "lorentz" or "voigt"
         self.plot_calibration_fit = False         
         self.show_calibration_marks = False
-        self.show_mean_area_heatmap = True
+        self.show_mean_area_heatmap = False
         self.linewidth = 0.6 # Default: 0.6, MA: 1.0, txt: 0.6
 
         ##### Constructor that declares class variables (self.x) #####
@@ -344,7 +344,7 @@ class iccd_evaluation():
             if self.mode == "DA":
                 plt.ylabel("$\Delta $A")#, family="serif", fontsize=8)
             elif self.mode == "A":
-                plt.ylabel("$A$")#, family="serif", fontsize=8)
+                plt.ylabel("A")#, family="serif", fontsize=8)
             else:
                 plt.ylabel("counts")#, family="serif")#, fontsize=8)
         if self.calibration_mode == True:
@@ -598,7 +598,7 @@ class iccd_evaluation():
         self.plot_spectrum()
 
 if __name__ =='__main__':
-    plot1 = iccd_evaluation("spectrum")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
+    plot1 = iccd_evaluation("DA")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
                                             # You can also set the mode "DA" for calculating a difference absorbance spectrum.                
     #plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
     plot1.iterate()                         # start evaluating process by calling the function evaluate()
