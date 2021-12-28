@@ -15,7 +15,10 @@ Calling the function plot1.evaluate() then starts the evaluation. Note that only
 
 The script will create folders for the plotted images, aswell as for processed data and will sort the files into these folders after it finished evaluating them. 
 
+To calculate the difference absorbance create an object of the class with the string "DA" or "A". "A" labels the y-axis in case you want to display the absorbance. It is necessary that you feed the code with three measurement files containing "_I_", "_I0_" and "_D_" in their names, in both of these modes. 
+In case you want to calcultate the difference absorbance "_I_" should be the laser excited measurement, "_I0_" the measurement without excitement and "_D_" the dark measurement. 
+You can layer or stack these DA-Spectra by setting either self.layer_DA_spectra or self.stack_DA_spectra to true. If there also should be a legend plotted, you can add a .json file where you define a legend label for each measurement. You can then refere to this file in self.legend_label_file.
 
-![MD05_Kamera2Test_550nm_3ms_heatmap](https://user-images.githubusercontent.com/42771712/139681285-1a5b1f46-b010-4216-82d8-9e3995aa9dd0.png)
 
-![MD05_Kamera2Test_550nm_3ms_spectrum](https://user-images.githubusercontent.com/42771712/139681283-c81d5039-95d3-4238-a660-e134d28a68f5.png)
+
+

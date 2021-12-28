@@ -10,6 +10,9 @@ The spectrum is calculated as mean from rows in the image. By changing the value
 By switching self.single_row to True, it is possible to generate the spectrum from a single row of pixels from the image, instead of mulitple rows. You can select the single row by changing the value of self.single_row.
 Calling the function plot1.evaluate() then starts the evaluation. Note that only in case of "both" the area wherefrom the mean for the spectrum is created is shown in red on the heatmap. To avoid the red area, just plot the heatmap and spectrum individual. 
 The script will create folders for the plotted images, aswell as for processed data and will sort the files into these folders after it finished evaluating them. 
+To calculate the difference absorbance create an object of the class with the string "DA" or "A". "A" labels the y-axis in case you want to display the absorbance. It is necessary that you feed the code with three measurement files containing "_I_", "_I0_" and "_D_" in their names, in both of these modes. 
+In case you want to calcultate the difference absorbance "_I_" should be the laser excited measurement, "_I0_" the measurement without excitement and "_D_" the dark measurement. 
+You can layer or stack these DA-Spectra by setting either self.layer_DA_spectra or self.stack_DA_spectra to true. If there also should be a legend plotted, you can add a .json file where you define a legend label for each measurement. You can then refere to this file in self.legend_label_file.
 
 """
 
@@ -36,16 +39,16 @@ class iccd_evaluation():
         self.test_run = False            # If self.test_run is True, Images will not be safed, but displayed and also files will not be moved. Made for easier developing.
         self.file_format_mode = "asc"           # "asc" for measurements from Andor iStar Camera or "txt" for measurements from OceanOptics Minispec which are already calibrated.
         self.drop_first_measurement = False             # In kinetic series w/ single track, often the first line of data is false due to build up charge in the ccd. Setting self.drop_first_measurent to True drops this line of data. Note to acquire n+1 mesaurements! 
-        self.MA_filter = False
-        self.layer_DA_spectra = False
-        self.stack_DA_spectra = False
-        self.legend_label_file = "legend_label_files/legend_labels_OD1.json"
-        self.plot_title = False
-        self.mean_row_start = 570          #670             #740           #480          #250   
-        self.mean_row_end = 790            #690             #760           #880          #550
-        self.single_row_mode = False
-        self.single_row = 255
-        self.calibration_file = "calibration_files/calibration_file_old.json"
+        self.MA_filter = False          # Turn on the moving average filter. Default is n=10
+        self.layer_DA_spectra = False           # Layer multiple DA spectra in one image
+        self.stack_DA_spectra = False           # Stack multiple DA spectra in one image
+        self.legend_label_file = "legend_label_files/legend_labels_OD1.json"            # File that contains labels for the legend for each measurement
+        self.plot_title = False         # Plots the filename as title in the image
+        self.mean_row_start = 570          #670             #740           #480          #250           # Row on sensor matrix to start calculating the mean from
+        self.mean_row_end = 790            #690             #760           #880          #550           # Row on sensor matrix to end calculating the mean to
+        self.single_row_mode = False            # Caluclates the spectrum from a single row defined in self.single_row
+        self.single_row = 255           # Row to calculate the spectrum from in single_row mode
+        self.calibration_file = "calibration_files/calibration_file_old.json"           # File that contains calibration data. This file is written by the function self.calibrate() and read by the function self.get_calibration().
         self.calibration_points = 3
         self.peak_height_min = 2500
         self.peak_distance = 20
@@ -53,7 +56,7 @@ class iccd_evaluation():
         self.calibration_fit_mode = "gauss"           # "gauss", "lorentz" or "voigt"
         self.plot_calibration_fit = False         
         self.show_calibration_marks = False
-        self.show_mean_area_heatmap = False
+        self.show_mean_area_heatmap = False         # Highligths the area of the rows in the heatmap the mean was calculated from.
         self.linewidth = 0.6 # Default: 0.6, MA: 1.0, txt: 0.6
 
         ##### Constructor that declares class variables (self.x) #####
@@ -598,10 +601,10 @@ class iccd_evaluation():
         self.plot_spectrum()
 
 if __name__ =='__main__':
-    plot1 = iccd_evaluation("DA")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum", or "both". 
+    plot1 = iccd_evaluation("DA")         # calling an object from the class iccd_evaluation("String") with the parameters "heatmap", "spectrum" or "both". 
                                             # You can also set the mode "DA" for calculating a difference absorbance spectrum.                
     #plot1.calibrate()                       # Use this mode to peak search and generate a calibration file with new calibration values. There must only be one file with the data from the calibration lamp in the current folder for this mode!
-    plot1.iterate()                         # start evaluating process by calling the function evaluate()
+    plot1.iterate()                         # start evaluating process by calling the function iterate()
 
 # %%
 
